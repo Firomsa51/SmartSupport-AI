@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "SmartSupport AI"
+version = "1.0.0"
+id = "artifacts/smartsupport"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18493
+
+[services.development]
+run = "pnpm --filter @workspace/smartsupport run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/smartsupport", "run", "build" ]
+publicDir = "artifacts/smartsupport/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18493"
+BASE_PATH = "/"
