@@ -7,6 +7,7 @@ import {
   useListConversations, getListConversationsQueryKey,
   useGetChatbotAnalytics, getGetChatbotAnalyticsQueryKey,
   useUpdateChatbot,
+  useScrapeUrl,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -15,6 +16,7 @@ import { z } from "zod";
 import {
   ArrowLeft, FileText, MessageSquare, BarChart3, Settings2, Plus, Trash2,
   ExternalLink, Bot, Globe, AlignLeft, CheckCircle2, Clock, AlertCircle, Loader2,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +74,8 @@ export default function ChatbotDetail() {
   const addDocument = useAddDocument();
   const deleteDocument = useDeleteDocument();
   const updateChatbot = useUpdateChatbot();
+  const scrapeUrl = useScrapeUrl();
+  const [scrapeInput, setScrapeInput] = useState("");
 
   const docForm = useForm<DocForm>({
     resolver: zodResolver(docSchema),
@@ -79,6 +83,29 @@ export default function ChatbotDetail() {
   });
 
   const sourceType = docForm.watch("sourceType");
+
+  const handleFetchUrl = () => {
+    const url = scrapeInput.trim();
+    if (!url) return;
+    scrapeUrl.mutate(
+      { id: chatbotId, data: { url } },
+      {
+        onSuccess: (result) => {
+          docForm.setValue("title", result.title, { shouldValidate: true });
+          docForm.setValue("content", result.content, { shouldValidate: true });
+          docForm.setValue("sourceUrl", result.url, { shouldValidate: true });
+          toast.success("Page fetched — review content below");
+        },
+        onError: (err: unknown) => {
+          const msg =
+            err instanceof Error
+              ? err.message
+              : "Could not fetch this URL. Try pasting the content manually.";
+          toast.error(msg);
+        },
+      }
+    );
+  };
 
   const handleAddDoc = (data: DocForm) => {
     addDocument.mutate(
@@ -279,19 +306,38 @@ export default function ChatbotDetail() {
                     </div>
 
                     {sourceType === "url" && (
-                      <FormField
-                        control={docForm.control}
-                        name="sourceUrl"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs">URL</FormLabel>
-                            <FormControl>
-                              <Input placeholder="https://yoursite.com/docs/faq" data-testid="input-source-url" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-foreground">URL to scrape</p>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="https://yoursite.com/docs/faq"
+                            value={scrapeInput}
+                            onChange={(e) => setScrapeInput(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleFetchUrl(); } }}
+                            data-testid="input-source-url"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleFetchUrl}
+                            disabled={!scrapeInput.trim() || scrapeUrl.isPending}
+                            className="gap-1.5 whitespace-nowrap"
+                            data-testid="button-fetch-url"
+                          >
+                            {scrapeUrl.isPending ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                            {scrapeUrl.isPending ? "Fetching…" : "Fetch content"}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Click "Fetch content" to automatically extract text from the page. Works best with documentation and blog posts.
+                        </p>
+                      </div>
                     )}
 
                     <FormField
@@ -299,11 +345,24 @@ export default function ChatbotDetail() {
                       name="content"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs">{sourceType === "url" ? "Paste page content" : "Content"}</FormLabel>
+                          <div className="flex items-center justify-between mb-1">
+                            <FormLabel className="text-xs">
+                              {sourceType === "url" ? "Extracted content" : "Content"}
+                            </FormLabel>
+                            {field.value && (
+                              <span className="text-xs text-muted-foreground">
+                                {field.value.length.toLocaleString()} chars
+                              </span>
+                            )}
+                          </div>
                           <FormControl>
                             <Textarea
-                              placeholder={sourceType === "url" ? "Paste the text content from the URL..." : "Paste your documentation, FAQs, policies, etc..."}
-                              className="resize-none h-32 font-mono text-xs"
+                              placeholder={
+                                sourceType === "url"
+                                  ? "Paste URL above and click Fetch, or paste content manually…"
+                                  : "Paste your documentation, FAQs, policies, etc…"
+                              }
+                              className="resize-none h-36 font-mono text-xs"
                               data-testid="input-doc-content"
                               {...field}
                             />

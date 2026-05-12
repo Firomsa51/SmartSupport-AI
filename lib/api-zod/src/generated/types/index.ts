@@ -22,6 +22,8 @@ export * from "./documentStatus";
 export * from "./healthStatus";
 export * from "./message";
 export * from "./messageRole";
+export * from "./scrapeUrlInput";
+export * from "./scrapeUrlResult";
 export * from "./widgetMessageInput";
 export * from "./widgetMessageResponse";
 export * from "./widgetScript";

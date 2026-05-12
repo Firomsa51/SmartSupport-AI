@@ -185,6 +185,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/Document"
 
+  /chatbots/{id}/documents/scrape-url:
+    post:
+      operationId: scrapeUrl
+      tags: [documents]
+      summary: Fetch and extract text content from a URL
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScrapeUrlInput"
+      responses:
+        "200":
+          description: Scraped content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScrapeUrlResult"
+        "400":
+          description: Bad request
+        "422":
+          description: Could not fetch or parse the URL
+
   /chatbots/{id}/documents/{docId}:
     delete:
       operationId: deleteDocument
@@ -505,6 +534,25 @@ components:
           type: integer
         activeChatbots:
           type: integer
+
+    ScrapeUrlInput:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+
+    ScrapeUrlResult:
+      type: object
+      required: [title, content, url]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        url:
+          type: string
 
     WidgetMessageInput:
       type: object

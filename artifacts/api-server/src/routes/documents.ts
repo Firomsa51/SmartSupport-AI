@@ -3,11 +3,14 @@ import { eq, and } from "drizzle-orm";
 import { db, documentsTable, chatbotsTable } from "@workspace/db";
 import { requireAuth, getUserId } from "../lib/auth";
 import { embedAndStoreDocument } from "../lib/rag";
+import { scrapeUrl } from "../lib/scraper";
 import {
   ListDocumentsParams,
   AddDocumentParams,
   AddDocumentBody,
   DeleteDocumentParams,
+  ScrapeUrlParams,
+  ScrapeUrlBody,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -77,6 +80,38 @@ router.post("/chatbots/:id/documents", requireAuth, async (req, res): Promise<vo
   res.status(201).json(doc);
 
   embedAndStoreDocument(doc.id, params.data.id, parsed.data.content).catch(() => {});
+});
+
+router.post("/chatbots/:id/documents/scrape-url", requireAuth, async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  const params = ScrapeUrlParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsed = ScrapeUrlBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [bot] = await db
+    .select()
+    .from(chatbotsTable)
+    .where(and(eq(chatbotsTable.id, params.data.id), eq(chatbotsTable.userId, userId)));
+
+  if (!bot) {
+    res.status(404).json({ error: "Chatbot not found" });
+    return;
+  }
+
+  try {
+    const result = await scrapeUrl(parsed.data.url);
+    res.json(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to scrape URL";
+    res.status(422).json({ error: msg });
+  }
 });
 
 router.delete("/chatbots/:id/documents/:docId", requireAuth, async (req, res): Promise<void> => {

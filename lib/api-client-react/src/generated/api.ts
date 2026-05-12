@@ -27,6 +27,8 @@ import type {
   DocumentInput,
   HealthStatus,
   Message,
+  ScrapeUrlInput,
+  ScrapeUrlResult,
   WidgetMessageInput,
   WidgetMessageResponse,
   WidgetScript,
@@ -795,6 +797,93 @@ export const useAddDocument = <
   TContext
 > => {
   return useMutation(getAddDocumentMutationOptions(options));
+};
+
+/**
+ * @summary Fetch and extract text content from a URL
+ */
+export const getScrapeUrlUrl = (id: number) => {
+  return `/api/chatbots/${id}/documents/scrape-url`;
+};
+
+export const scrapeUrl = async (
+  id: number,
+  scrapeUrlInput: ScrapeUrlInput,
+  options?: RequestInit,
+): Promise<ScrapeUrlResult> => {
+  return customFetch<ScrapeUrlResult>(getScrapeUrlUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(scrapeUrlInput),
+  });
+};
+
+export const getScrapeUrlMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scrapeUrl>>,
+    TError,
+    { id: number; data: BodyType<ScrapeUrlInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof scrapeUrl>>,
+  TError,
+  { id: number; data: BodyType<ScrapeUrlInput> },
+  TContext
+> => {
+  const mutationKey = ["scrapeUrl"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof scrapeUrl>>,
+    { id: number; data: BodyType<ScrapeUrlInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return scrapeUrl(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ScrapeUrlMutationResult = NonNullable<
+  Awaited<ReturnType<typeof scrapeUrl>>
+>;
+export type ScrapeUrlMutationBody = BodyType<ScrapeUrlInput>;
+export type ScrapeUrlMutationError = ErrorType<void>;
+
+/**
+ * @summary Fetch and extract text content from a URL
+ */
+export const useScrapeUrl = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scrapeUrl>>,
+    TError,
+    { id: number; data: BodyType<ScrapeUrlInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof scrapeUrl>>,
+  TError,
+  { id: number; data: BodyType<ScrapeUrlInput> },
+  TContext
+> => {
+  return useMutation(getScrapeUrlMutationOptions(options));
 };
 
 /**

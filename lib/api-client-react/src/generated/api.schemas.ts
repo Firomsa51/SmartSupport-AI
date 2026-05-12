@@ -165,6 +165,16 @@ export interface DashboardStats {
   activeChatbots: number;
 }
 
+export interface ScrapeUrlInput {
+  url: string;
+}
+
+export interface ScrapeUrlResult {
+  title: string;
+  content: string;
+  url: string;
+}
+
 export interface WidgetMessageInput {
   message: string;
   sessionId: string;

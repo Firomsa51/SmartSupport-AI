@@ -160,6 +160,23 @@ export const AddDocumentBody = zod.object({
 });
 
 /**
+ * @summary Fetch and extract text content from a URL
+ */
+export const ScrapeUrlParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ScrapeUrlBody = zod.object({
+  url: zod.string().url(),
+});
+
+export const ScrapeUrlResponse = zod.object({
+  title: zod.string(),
+  content: zod.string(),
+  url: zod.string(),
+});
+
+/**
  * @summary Delete a document
  */
 export const DeleteDocumentParams = zod.object({
