@@ -17,11 +17,15 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  BatchDocumentInput,
+  BatchDocumentResult,
   Chatbot,
   ChatbotAnalytics,
   ChatbotInput,
   ChatbotUpdate,
   Conversation,
+  CrawlSiteInput,
+  CrawlSiteResult,
   DashboardStats,
   Document,
   DocumentInput,
@@ -884,6 +888,180 @@ export const useScrapeUrl = <
   TContext
 > => {
   return useMutation(getScrapeUrlMutationOptions(options));
+};
+
+/**
+ * @summary Crawl a website and discover pages on the same domain
+ */
+export const getCrawlSiteUrl = (id: number) => {
+  return `/api/chatbots/${id}/documents/crawl-site`;
+};
+
+export const crawlSite = async (
+  id: number,
+  crawlSiteInput: CrawlSiteInput,
+  options?: RequestInit,
+): Promise<CrawlSiteResult> => {
+  return customFetch<CrawlSiteResult>(getCrawlSiteUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(crawlSiteInput),
+  });
+};
+
+export const getCrawlSiteMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof crawlSite>>,
+    TError,
+    { id: number; data: BodyType<CrawlSiteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof crawlSite>>,
+  TError,
+  { id: number; data: BodyType<CrawlSiteInput> },
+  TContext
+> => {
+  const mutationKey = ["crawlSite"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof crawlSite>>,
+    { id: number; data: BodyType<CrawlSiteInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return crawlSite(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CrawlSiteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof crawlSite>>
+>;
+export type CrawlSiteMutationBody = BodyType<CrawlSiteInput>;
+export type CrawlSiteMutationError = ErrorType<void>;
+
+/**
+ * @summary Crawl a website and discover pages on the same domain
+ */
+export const useCrawlSite = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof crawlSite>>,
+    TError,
+    { id: number; data: BodyType<CrawlSiteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof crawlSite>>,
+  TError,
+  { id: number; data: BodyType<CrawlSiteInput> },
+  TContext
+> => {
+  return useMutation(getCrawlSiteMutationOptions(options));
+};
+
+/**
+ * @summary Add multiple documents at once
+ */
+export const getBatchAddDocumentsUrl = (id: number) => {
+  return `/api/chatbots/${id}/documents/batch`;
+};
+
+export const batchAddDocuments = async (
+  id: number,
+  batchDocumentInput: BatchDocumentInput,
+  options?: RequestInit,
+): Promise<BatchDocumentResult> => {
+  return customFetch<BatchDocumentResult>(getBatchAddDocumentsUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(batchDocumentInput),
+  });
+};
+
+export const getBatchAddDocumentsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof batchAddDocuments>>,
+    TError,
+    { id: number; data: BodyType<BatchDocumentInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof batchAddDocuments>>,
+  TError,
+  { id: number; data: BodyType<BatchDocumentInput> },
+  TContext
+> => {
+  const mutationKey = ["batchAddDocuments"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof batchAddDocuments>>,
+    { id: number; data: BodyType<BatchDocumentInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return batchAddDocuments(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BatchAddDocumentsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof batchAddDocuments>>
+>;
+export type BatchAddDocumentsMutationBody = BodyType<BatchDocumentInput>;
+export type BatchAddDocumentsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add multiple documents at once
+ */
+export const useBatchAddDocuments = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof batchAddDocuments>>,
+    TError,
+    { id: number; data: BodyType<BatchDocumentInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof batchAddDocuments>>,
+  TError,
+  { id: number; data: BodyType<BatchDocumentInput> },
+  TContext
+> => {
+  return useMutation(getBatchAddDocumentsMutationOptions(options));
 };
 
 /**

@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { toast } from "sonner";
 import AppShell from "@/components/app-shell";
+import CrawlSiteDialog from "@/components/crawl-site-dialog";
 
 const docSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -57,6 +58,7 @@ export default function ChatbotDetail() {
   const chatbotId = parseInt(id ?? "0");
   const queryClient = useQueryClient();
   const [showDocForm, setShowDocForm] = useState(false);
+  const [showCrawlDialog, setShowCrawlDialog] = useState(false);
 
   const { data: bot, isLoading: botLoading } = useGetChatbot(chatbotId, {
     query: { enabled: !!chatbotId, queryKey: getGetChatbotQueryKey(chatbotId) },
@@ -246,18 +248,36 @@ export default function ChatbotDetail() {
 
           {/* Knowledge Base Tab */}
           <TabsContent value="knowledge" className="mt-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Upload text content or URLs to train your chatbot.</p>
-              <Button
-                size="sm"
-                className="gap-2"
-                onClick={() => setShowDocForm(!showDocForm)}
-                data-testid="button-add-document"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add document
-              </Button>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm text-muted-foreground">Upload text content or crawl a website to train your chatbot.</p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => setShowCrawlDialog(true)}
+                  data-testid="button-crawl-site"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  Crawl website
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setShowDocForm(!showDocForm)}
+                  data-testid="button-add-document"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add document
+                </Button>
+              </div>
             </div>
+
+            <CrawlSiteDialog
+              open={showCrawlDialog}
+              onOpenChange={setShowCrawlDialog}
+              chatbotId={chatbotId}
+            />
 
             {showDocForm && (
               <div className="rounded-xl border border-border bg-card p-5">

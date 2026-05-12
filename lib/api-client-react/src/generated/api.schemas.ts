@@ -165,6 +165,62 @@ export interface DashboardStats {
   activeChatbots: number;
 }
 
+export interface CrawlSiteInput {
+  url: string;
+  /**
+   * @minimum 1
+   * @maximum 50
+   */
+  maxPages?: number;
+}
+
+export interface CrawledPage {
+  url: string;
+  title: string;
+  content: string;
+}
+
+export type CrawlSiteResultErrorsItem = {
+  url: string;
+  reason: string;
+};
+
+export interface CrawlSiteResult {
+  pages: CrawledPage[];
+  skipped: number;
+  errors?: CrawlSiteResultErrorsItem[];
+}
+
+export type BatchDocumentItemSourceType =
+  (typeof BatchDocumentItemSourceType)[keyof typeof BatchDocumentItemSourceType];
+
+export const BatchDocumentItemSourceType = {
+  text: "text",
+  url: "url",
+  pdf: "pdf",
+} as const;
+
+export interface BatchDocumentItem {
+  title: string;
+  sourceType: BatchDocumentItemSourceType;
+  content: string;
+  sourceUrl?: string;
+}
+
+export interface BatchDocumentInput {
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  documents: BatchDocumentItem[];
+}
+
+export interface BatchDocumentResult {
+  created: number;
+  total: number;
+  documents?: Document[];
+}
+
 export interface ScrapeUrlInput {
   url: string;
 }

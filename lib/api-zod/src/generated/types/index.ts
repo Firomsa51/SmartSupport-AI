@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./batchDocumentInput";
+export * from "./batchDocumentItem";
+export * from "./batchDocumentItemSourceType";
+export * from "./batchDocumentResult";
 export * from "./chatbot";
 export * from "./chatbotAnalytics";
 export * from "./chatbotInput";
@@ -13,6 +17,10 @@ export * from "./chatbotStatus";
 export * from "./chatbotUpdate";
 export * from "./chatbotUpdateStatus";
 export * from "./conversation";
+export * from "./crawledPage";
+export * from "./crawlSiteInput";
+export * from "./crawlSiteResult";
+export * from "./crawlSiteResultErrorsItem";
 export * from "./dashboardStats";
 export * from "./document";
 export * from "./documentInput";

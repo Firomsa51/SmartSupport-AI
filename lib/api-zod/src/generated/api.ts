@@ -177,6 +177,67 @@ export const ScrapeUrlResponse = zod.object({
 });
 
 /**
+ * @summary Crawl a website and discover pages on the same domain
+ */
+export const CrawlSiteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const crawlSiteBodyMaxPagesDefault = 20;
+export const crawlSiteBodyMaxPagesMax = 50;
+
+export const CrawlSiteBody = zod.object({
+  url: zod.string().url(),
+  maxPages: zod
+    .number()
+    .min(1)
+    .max(crawlSiteBodyMaxPagesMax)
+    .default(crawlSiteBodyMaxPagesDefault),
+});
+
+export const CrawlSiteResponse = zod.object({
+  pages: zod.array(
+    zod.object({
+      url: zod.string(),
+      title: zod.string(),
+      content: zod.string(),
+    }),
+  ),
+  skipped: zod.number(),
+  errors: zod
+    .array(
+      zod.object({
+        url: zod.string(),
+        reason: zod.string(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Add multiple documents at once
+ */
+export const BatchAddDocumentsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const batchAddDocumentsBodyDocumentsMax = 50;
+
+export const BatchAddDocumentsBody = zod.object({
+  documents: zod
+    .array(
+      zod.object({
+        title: zod.string(),
+        sourceType: zod.enum(["text", "url", "pdf"]),
+        content: zod.string(),
+        sourceUrl: zod.string().optional(),
+      }),
+    )
+    .min(1)
+    .max(batchAddDocumentsBodyDocumentsMax),
+});
+
+/**
  * @summary Delete a document
  */
 export const DeleteDocumentParams = zod.object({

@@ -214,6 +214,60 @@ paths:
         "422":
           description: Could not fetch or parse the URL
 
+  /chatbots/{id}/documents/crawl-site:
+    post:
+      operationId: crawlSite
+      tags: [documents]
+      summary: Crawl a website and discover pages on the same domain
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrawlSiteInput"
+      responses:
+        "200":
+          description: Crawled pages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlSiteResult"
+        "400":
+          description: Bad request
+        "422":
+          description: Could not crawl the site
+
+  /chatbots/{id}/documents/batch:
+    post:
+      operationId: batchAddDocuments
+      tags: [documents]
+      summary: Add multiple documents at once
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchDocumentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchDocumentResult"
+
   /chatbots/{id}/documents/{docId}:
     delete:
       operationId: deleteDocument
@@ -534,6 +588,89 @@ components:
           type: integer
         activeChatbots:
           type: integer
+
+    CrawlSiteInput:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+        maxPages:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+
+    CrawledPage:
+      type: object
+      required: [url, title, content]
+      properties:
+        url:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+
+    CrawlSiteResult:
+      type: object
+      required: [pages, skipped]
+      properties:
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrawledPage"
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            required: [url, reason]
+            properties:
+              url:
+                type: string
+              reason:
+                type: string
+
+    BatchDocumentItem:
+      type: object
+      required: [title, sourceType, content]
+      properties:
+        title:
+          type: string
+        sourceType:
+          type: string
+          enum: [text, url, pdf]
+        content:
+          type: string
+        sourceUrl:
+          type: string
+
+    BatchDocumentInput:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchDocumentItem"
+          minItems: 1
+          maxItems: 50
+
+    BatchDocumentResult:
+      type: object
+      required: [created, total]
+      properties:
+        created:
+          type: integer
+        total:
+          type: integer
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
 
     ScrapeUrlInput:
       type: object
