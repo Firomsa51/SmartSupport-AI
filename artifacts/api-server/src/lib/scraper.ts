@@ -76,10 +76,10 @@ export async function scrapeUrl(rawUrl: string): Promise<ScrapedPage> {
 
   // Prefer main content areas if present
   const contentSelectors = ["main", "article", "[role='main']", ".content", "#content", ".post", "body"];
-  let contentEl = $("body");
+  let contentEl: cheerio.Cheerio<cheerio.Element> = $("body") as cheerio.Cheerio<cheerio.Element>;
   for (const sel of contentSelectors) {
     if ($(sel).length > 0) {
-      contentEl = $(sel).first() as ReturnType<typeof $>;
+      contentEl = $(sel).first() as cheerio.Cheerio<cheerio.Element>;
       break;
     }
   }
