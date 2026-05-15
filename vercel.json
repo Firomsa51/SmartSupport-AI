@@ -1,0 +1,8 @@
+{
+  "buildCommand": "pnpm --filter @workspace/smartsupport run build",
+  "outputDirectory": "artifacts/smartsupport/dist/public",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
