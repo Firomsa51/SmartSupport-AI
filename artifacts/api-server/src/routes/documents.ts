@@ -197,7 +197,7 @@ router.post("/chatbots/:id/documents/batch", requireAuth, async (req, res): Prom
 
   // Kick off embedding for each doc in background
   for (const doc of inserted) {
-    embedAndStoreDocument(doc.id, params.data.id, doc.content).catch(() => {});
+    embedAndStoreDocument(doc.id, params.data.id, doc.content ?? "").catch(() => {});
   }
 });
 
