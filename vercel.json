@@ -1,8 +1,15 @@
 {
-  "buildCommand": "pnpm --filter @workspace/smartsupport run build",
+  "buildCommand": "pnpm --filter @workspace/api-server run build:vercel && pnpm --filter @workspace/smartsupport run build",
   "outputDirectory": "artifacts/smartsupport/dist/public",
   "installCommand": "pnpm install --frozen-lockfile",
+  "functions": {
+    "api/handler.js": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/api",      "destination": "/api/handler" },
+    { "source": "/api/(.*)", "destination": "/api/handler" },
+    { "source": "/(.*)",     "destination": "/index.html"  }
   ]
 }
