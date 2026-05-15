@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import type { Element } from "cheerio";
 
 export interface ScrapedPage {
   title: string;
@@ -76,10 +77,11 @@ export async function scrapeUrl(rawUrl: string): Promise<ScrapedPage> {
 
   // Prefer main content areas if present
   const contentSelectors = ["main", "article", "[role='main']", ".content", "#content", ".post", "body"];
-  let contentEl: cheerio.Cheerio<cheerio.Element> = $("body") as cheerio.Cheerio<cheerio.Element>;
+  let contentEl = $("body");
   for (const sel of contentSelectors) {
-    if ($(sel).length > 0) {
-      contentEl = $(sel).first() as cheerio.Cheerio<cheerio.Element>;
+    const found = $(sel).first();
+    if (found.length > 0 && found.get(0)?.type === "tag") {
+      contentEl = found as cheerio.Cheerio<Element>;
       break;
     }
   }
