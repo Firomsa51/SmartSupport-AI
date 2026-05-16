@@ -3,8 +3,17 @@
   "outputDirectory": "artifacts/smartsupport/dist/public",
   "installCommand": "pnpm install --frozen-lockfile",
   "rewrites": [
-    { "source": "/api",      "destination": "/api/handler" },
+    { "source": "/api", "destination": "/api/handler" },
     { "source": "/api/(.*)", "destination": "/api/handler" },
-    { "source": "/(.*)",     "destination": "/index.html"  }
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
