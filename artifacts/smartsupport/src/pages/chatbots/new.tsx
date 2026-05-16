@@ -13,27 +13,27 @@ import { toast } from "sonner";
 import AppShell from "@/components/app-shell";
 import { useState, useCallback, useMemo } from "react";
 
-// 1. Mirkaneessa (schema) fooyyessee – maqaa hawwii (trim) yeroo taasisu
+// Validation schema – trimmed and validated
 const schema = z.object({
   name: z
     .string()
-    .min(1, "Maqaan barbaachisa")
-    .max(80, "Maqaan qube 80 caaluu hin danda'u")
+    .min(1, "Name is required")
+    .max(80, "Name must be 80 characters or less")
     .transform((val) => val.trim())
-    .refine((val) => val.length > 0, "Maqaa duwwaa ta'uu hin danda'u"),
+    .refine((val) => val.length > 0, "Name cannot be empty"),
   description: z
     .string()
-    .max(300, "Ibsaan qubee 300 ol ta'uu hin qabu")
+    .max(300, "Description must be 300 characters or less")
     .optional()
     .transform((val) => val?.trim()),
   welcomeMessage: z
     .string()
-    .max(300, "Ergaa simannoo qubee 300 ol hin ta'u")
+    .max(300, "Welcome message must be 300 characters or less")
     .default("Hi! How can I help you today?")
     .transform((val) => val?.trim()),
   primaryColor: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Color code sirri ta'uu qaba (fkn #2563eb)")
+    .regex(/^#[0-9a-fA-F]{6}$/, "Color must be a valid hex code (e.g., #2563eb)")
     .default("#2563eb"),
 });
 
@@ -53,20 +53,18 @@ export default function NewChatbot() {
       welcomeMessage: "Hi! How can I help you today?",
       primaryColor: "#2563eb",
     },
-    mode: "onChange", // Akka barreessaa jijjiirutti dogoggora agarsii
+    mode: "onChange",
   });
 
-  // Yeroo foormii jijjiiramu, 'edited' jedhee madaala
+  // Mark form as edited when user types
   const handleFormChange = useCallback(() => {
     if (!formWasEdited && form.formState.isDirty) setFormWasEdited(true);
   }, [form.formState.isDirty, formWasEdited]);
 
-  // Ergamaa (onSubmit)
   const onSubmit = useCallback(
     (data: FormData) => {
       createChatbot.mutate(
         {
-          // API keessan akka eeggatu: name, description, welcomeMessage, primaryColor
           data: {
             name: data.name,
             description: data.description,
@@ -77,12 +75,12 @@ export default function NewChatbot() {
         {
           onSuccess: (bot) => {
             queryClient.invalidateQueries({ queryKey: getListChatbotsQueryKey() });
-            toast.success("Chatbot milkaa'inaan uumame!");
+            toast.success("Chatbot created successfully!");
             setLocation(`/chatbots/${bot.id}`);
           },
           onError: (error: any) => {
-            const errorMsg = error?.response?.data?.message || error?.message || "Uumuun hin milkoofne";
-            toast.error(`Dogoggorsa: ${errorMsg}`);
+            const errorMsg = error?.response?.data?.message || error?.message || "Failed to create chatbot";
+            toast.error(`Error: ${errorMsg}`);
           },
         }
       );
@@ -96,34 +94,32 @@ export default function NewChatbot() {
   const descValue = form.watch("description") || "";
   const welcomeValue = form.watch("welcomeMessage") || "";
 
-  // Yoo cancel tuqeefi foormi jijjirame, ittigaafata (confirm)
   const handleCancel = useCallback(() => {
-    if (formWasEdited && !confirm("Jijjiiramni keessan hin turre. Irraa deemuu barbaadduu?")) {
+    if (formWasEdited && !confirm("You have unsaved changes. Are you sure you want to leave?")) {
       return;
     }
     setLocation("/dashboard");
   }, [formWasEdited, setLocation]);
 
-  // Madaala gahee (disabled) yeroo ergaan deemuu
   const isFormDisabled = isSubmitting;
 
   return (
     <AppShell>
-      <div className="p-6 max-w-2xl mx-auto" role="main" aria-label="Foormii chatbot haaraa uumuu">
+      <div className="p-6 max-w-2xl mx-auto" role="main" aria-label="Create new chatbot form">
         <div className="mb-6">
           <Button
             variant="ghost"
             size="sm"
             className="gap-2 mb-4 -ml-2 text-muted-foreground"
             onClick={handleCancel}
-            aria-label="Gara dashboard deebi'uu"
+            aria-label="Go back to dashboard"
           >
             <ArrowLeft className="w-4 h-4" />
-            Deebi'i gara dashboard
+            Back to dashboard
           </Button>
-          <h1 className="text-2xl font-bold tracking-tight">Chatbot haaraa uumi</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Create New Chatbot</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gargaaraa AI keessan qopheessaa, booda kuusaa beekumsaa (knowledge base) isaaf baafadhaa.
+            Configure your AI assistant, then add a knowledge base.
           </p>
         </div>
 
@@ -135,24 +131,24 @@ export default function NewChatbot() {
               aria-busy={isSubmitting}
             >
               <fieldset disabled={isFormDisabled} className="space-y-6">
-                {/* Maqaa chatbot */}
+                {/* Chatbot name */}
                 <FormField
                   control={form.control}
                   name="name"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        Maqaa chatbot <span className="text-destructive">*</span>
+                        Chatbot name <span className="text-destructive">*</span>
                       </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Fkn: Gargaaraa Maamiltootaa"
+                          placeholder="e.g., Customer Support Bot"
                           data-testid="input-name"
                           aria-required="true"
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>Qube 80 ol hin ta'uu qabu</FormDescription>
+                      <FormDescription>Max 80 characters</FormDescription>
                       <div className="flex justify-between items-center">
                         <FormMessage />
                         <span className="text-xs text-muted-foreground">
@@ -163,16 +159,16 @@ export default function NewChatbot() {
                   )}
                 />
 
-                {/* Ibsa */}
+                {/* Description */}
                 <FormField
                   control={form.control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Ibsa (filannoo)</FormLabel>
+                      <FormLabel>Description (optional)</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Chatbot kun maal irratti gargaara?"
+                          placeholder="What does this chatbot help with?"
                           className="resize-none h-20"
                           data-testid="input-description"
                           {...field}
@@ -189,13 +185,13 @@ export default function NewChatbot() {
                   )}
                 />
 
-                {/* Ergaa simannoo (welcome message) */}
+                {/* Welcome message */}
                 <FormField
                   control={form.control}
                   name="welcomeMessage"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Ergaa simannoo</FormLabel>
+                      <FormLabel>Welcome message</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Hi! How can I help you today?"
@@ -204,7 +200,7 @@ export default function NewChatbot() {
                           value={field.value || ""}
                         />
                       </FormControl>
-                      <FormDescription>Ergaa yeroo widget banamu isa jalqabaa mul'ata</FormDescription>
+                      <FormDescription>First message shown when the widget opens</FormDescription>
                       <div className="flex justify-between items-center">
                         <FormMessage />
                         <span className="text-xs text-muted-foreground">
@@ -215,13 +211,13 @@ export default function NewChatbot() {
                   )}
                 />
 
-                {/* Halluu (primary color) */}
+                {/* Primary color */}
                 <FormField
                   control={form.control}
                   name="primaryColor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Halluu beekamaa (brand color)</FormLabel>
+                      <FormLabel>Brand color</FormLabel>
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg border border-border overflow-hidden flex-shrink-0">
                           <input
@@ -242,7 +238,7 @@ export default function NewChatbot() {
                         <div
                           className="w-9 h-9 rounded-full border border-border flex-shrink-0 shadow-sm"
                           style={{ backgroundColor: colorValue }}
-                          aria-label="Mul'ata halluu"
+                          aria-label="Color preview"
                         />
                       </div>
                       <FormMessage />
@@ -256,13 +252,13 @@ export default function NewChatbot() {
                     disabled={isSubmitting || !form.formState.isValid}
                     className="gap-2"
                     data-testid="button-create"
-                    aria-label="Chatbot uumi"
+                    aria-label="Create chatbot"
                   >
                     <Bot className="w-4 h-4" />
-                    {isSubmitting ? "Uumamaa jira..." : "Chatbot uumi"}
+                    {isSubmitting ? "Creating..." : "Create chatbot"}
                   </Button>
                   <Button variant="outline" type="button" onClick={handleCancel} disabled={isSubmitting}>
-                     Diiga
+                    Cancel
                   </Button>
                 </div>
               </fieldset>
