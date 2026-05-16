@@ -1,99 +1,216 @@
 import { useParams, Link } from "wouter";
-import { useState } from "react";
-import { useGetChatbot, getGetChatbotQueryKey, useGetChatbotWidgetScript, getGetChatbotWidgetScriptQueryKey } from "@workspace/api-client-react";
-import { ArrowLeft, Copy, Check, Code2, ExternalLink, MessageSquare } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import {
+  useGetChatbot,
+  getGetChatbotQueryKey,
+  useGetChatbotWidgetScript,
+  getGetChatbotWidgetScriptQueryKey,
+} from "@workspace/api-client-react";
+import { ArrowLeft, Copy, Check, Code2, ExternalLink, MessageSquare, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import AppShell from "@/components/app-shell";
 
 export default function EmbedPage() {
   const { id } = useParams<{ id: string }>();
-  const chatbotId = parseInt(id ?? "0");
+  const chatbotId = useMemo(() => {
+    const parsed = parseInt(id ?? "0");
+    return isNaN(parsed) ? 0 : parsed;
+  }, [id]);
   const [copied, setCopied] = useState(false);
 
-  const { data: bot } = useGetChatbot(chatbotId, {
-    query: { enabled: !!chatbotId, queryKey: getGetChatbotQueryKey(chatbotId) },
-  });
-  const { data: widgetData, isLoading } = useGetChatbotWidgetScript(chatbotId, {
-    query: { enabled: !!chatbotId, queryKey: getGetChatbotWidgetScriptQueryKey(chatbotId) },
+  // Fetch bot details (for name and primary color)
+  const {
+    data: bot,
+    isLoading: botLoading,
+    error: botError,
+  } = useGetChatbot(chatbotId, {
+    query: { enabled: chatbotId > 0, queryKey: getGetChatbotQueryKey(chatbotId) },
   });
 
-  const handleCopy = async () => {
-    if (!widgetData?.scriptTag) return;
-    await navigator.clipboard.writeText(widgetData.scriptTag);
-    setCopied(true);
-    toast.success("Script copied to clipboard");
-    setTimeout(() => setCopied(false), 2000);
-  };
+  // Fetch widget script
+  const {
+    data: widgetData,
+    isLoading: scriptLoading,
+    error: scriptError,
+  } = useGetChatbotWidgetScript(chatbotId, {
+    query: { enabled: chatbotId > 0, queryKey: getGetChatbotWidgetScriptQueryKey(chatbotId) },
+  });
+
+  const isLoading = botLoading || scriptLoading;
+  const hasError = botError || scriptError;
+
+  // Copy handler with memoization
+  const handleCopy = useCallback(async () => {
+    if (!widgetData?.scriptTag) {
+      toast.error("No script available to copy");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(widgetData.scriptTag);
+      setCopied(true);
+      toast.success("Script tag copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast.error("Failed to copy. Please copy manually.");
+    }
+  }, [widgetData]);
+
+  // Instructions list (static, memoized)
+  const instructions = useMemo(
+    () => [
+      {
+        step: "1",
+        title: "Script tag kooppi",
+        desc: "Battoona 'Copy' tuquun embed script tag kooppi godhu.",
+      },
+      {
+        step: "2",
+        title: "Website HTML keessan maxxansaa",
+        desc: "Script tag kana <head> ykn <body> cufuu dura (</body>) page hundarra maxxansaa.",
+      },
+      {
+        step: "3",
+        title: "Xumura!",
+        desc: "Chat widget akka floating button bottom-right keessanitti mul'ata.",
+      },
+    ],
+    []
+  );
+
+  // Error or invalid ID handling
+  if (chatbotId === 0) {
+    return (
+      <AppShell>
+        <div className="p-6 max-w-3xl mx-auto text-center">
+          <Alert variant="destructive" className="max-w-md mx-auto">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>Chatbot ID sirrii miti.</AlertDescription>
+          </Alert>
+          <Link href="/dashboard">
+            <Button className="mt-4">Gara dashboard deebi'i</Button>
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <AppShell>
+        <div className="p-6 max-w-3xl mx-auto text-center">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {botError?.message || scriptError?.message || "Waan tokko dogoggore. Maaloo deebi'ii yaali."}
+            </AlertDescription>
+          </Alert>
+          <Link href={`/chatbots/${chatbotId}`}>
+            <Button variant="outline" className="mt-4">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Gara chatbot deebi'i
+            </Button>
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <AppShell>
+        <div className="p-6 max-w-3xl mx-auto space-y-6">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  // No widget data (should not happen if no error)
+  if (!widgetData?.scriptTag) {
+    return (
+      <AppShell>
+        <div className="p-6 max-w-3xl mx-auto text-center">
+          <Alert>
+            <AlertDescription>Script tag hin argamne. Chatbot keessan sirriitti qindeessaa?</AlertDescription>
+          </Alert>
+          <Link href={`/chatbots/${chatbotId}`}>
+            <Button className="mt-4">Deebi'i</Button>
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const primaryColor = bot?.primaryColor ?? "#2563eb";
+  const chatbotName = bot?.name ?? "Chatbot";
 
   return (
     <AppShell>
       <div className="p-6 max-w-3xl mx-auto space-y-6">
+        {/* Header */}
         <div>
           <Link href={`/chatbots/${chatbotId}`}>
-            <Button variant="ghost" size="sm" className="gap-2 mb-4 -ml-2 text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 mb-4 -ml-2 text-muted-foreground"
+              aria-label="Gara chatbot detail deebi'i"
+            >
               <ArrowLeft className="w-4 h-4" />
-              Back to {bot?.name ?? "chatbot"}
+              Gara {chatbotName} deebi'i
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight">Embed widget</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Widget maxxansuu (embed)</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Add this script to your website to display the chat widget.
+            Script tag kana website keessanitti dabaluun chat widget banamaa.
           </p>
         </div>
 
-        {/* Script tag */}
+        {/* Script tag card */}
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
             <div className="flex items-center gap-2">
               <Code2 className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Script tag</span>
+              <span className="text-sm font-medium">Script tag (embed code)</span>
             </div>
             <Button
               size="sm"
               variant="outline"
               className="gap-2 h-7 text-xs"
               onClick={handleCopy}
-              disabled={!widgetData || isLoading}
+              aria-label="Copy script tag to clipboard"
               data-testid="button-copy-script"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? "Copied!" : "Copy"}
+              {copied ? "Koopp'e!" : "Kooppi"}
             </Button>
           </div>
           <div className="p-4">
-            {isLoading ? (
-              <Skeleton className="h-6 w-full" />
-            ) : (
-              <pre className="text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap break-all" data-testid="text-script-tag">
-                {widgetData?.scriptTag}
-              </pre>
-            )}
+            <pre
+              className="text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap break-all"
+              data-testid="text-script-tag"
+              aria-label="Embed script tag"
+            >
+              {widgetData.scriptTag}
+            </pre>
           </div>
         </div>
 
         {/* Instructions */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <h2 className="font-semibold text-sm">Setup instructions</h2>
+          <h2 className="font-semibold text-sm">Akka itti fayyadamtan</h2>
           <div className="space-y-4 text-sm">
-            {[
-              {
-                step: "1",
-                title: "Copy the script tag above",
-                desc: "Click the copy button to copy the embed script to your clipboard.",
-              },
-              {
-                step: "2",
-                title: "Paste into your website HTML",
-                desc: "Add the script to the <head> or just before the closing </body> tag on every page where you want the widget to appear.",
-              },
-              {
-                step: "3",
-                title: "That's it",
-                desc: "The chat widget will automatically appear as a floating button in the bottom-right corner of your page.",
-              },
-            ].map((item) => (
+            {instructions.map((item) => (
               <div key={item.step} className="flex gap-3">
                 <div className="w-6 h-6 rounded-full bg-primary/15 text-primary flex items-center justify-center flex-shrink-0 text-xs font-bold">
                   {item.step}
@@ -109,39 +226,44 @@ export default function EmbedPage() {
 
         {/* Widget preview */}
         <div className="rounded-xl border border-border bg-card p-5">
-          <h2 className="font-semibold text-sm mb-4">Widget preview</h2>
+          <h2 className="font-semibold text-sm mb-4">Mul'ata widget</h2>
           <div className="relative bg-muted/20 rounded-lg h-48 border border-border/50 overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-xs text-muted-foreground">Your website content</p>
+              <p className="text-xs text-muted-foreground">Website keessan qabiyyee (content)</p>
             </div>
             <div className="absolute bottom-4 right-4">
               <div
-                className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center"
-                style={{ backgroundColor: bot?.primaryColor ?? "#2563eb" }}
+                className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-105"
+                style={{ backgroundColor: primaryColor }}
                 data-testid="widget-preview-button"
+                aria-label="Chat widget preview button"
               >
                 <MessageSquare className="w-5 h-5 text-white" />
               </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            The floating button appears in the bottom-right corner. Clicking it opens the chat interface.
+            Buttoon kun bottom-right keessatti mul'ata. Tuquun chat interface banama.
           </p>
         </div>
 
         {/* Test link */}
         <div className="flex items-center gap-3">
           <a
-            href={`/widget/${widgetData?.chatbotUid ?? ""}`}
+            href={`/widget/${widgetData.chatbotUid ?? ""}`}
             target="_blank"
             rel="noopener noreferrer"
             data-testid="link-test-widget"
+            className="inline-block"
           >
-            <Button variant="outline" className="gap-2" disabled={!widgetData}>
+            <Button variant="outline" className="gap-2" disabled={!widgetData.chatbotUid}>
               <ExternalLink className="w-4 h-4" />
-              Test widget in new tab
+              Tab haaraa keessatti widget qabadhu
             </Button>
           </a>
+          <p className="text-xs text-muted-foreground">
+            Widget yeroo xiyyeeffannoo (preview) akka namooti keessan argu.
+          </p>
         </div>
       </div>
     </AppShell>
