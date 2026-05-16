@@ -1,5 +1,5 @@
 import { useParams, Link } from "wouter";
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   useGetChatbot, getGetChatbotQueryKey,
   useListDocuments, getListDocumentsQueryKey,
@@ -25,107 +25,189 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { toast } from "sonner";
 import AppShell from "@/components/app-shell";
 import CrawlSiteDialog from "@/components/crawl-site-dialog";
 
+// ----------------------------------------------------------------------
+// Schema for document form (upgraded validation)
+// ----------------------------------------------------------------------
 const docSchema = z.object({
-  title: z.string().min(1, "Title is required"),
+  title: z.string()
+    .min(1, "Title is required")
+    .max(200, "Title must be 200 characters or less")
+    .transform(s => s.trim()),
   sourceType: z.enum(["text", "url"]),
-  content: z.string().min(1, "Content is required"),
-  sourceUrl: z.string().optional(),
+  content: z.string()
+    .min(1, "Content is required")
+    .max(50000, "Content is too long (max 50,000 characters)")
+    .transform(s => s.trim()),
+  sourceUrl: z.string()
+    .url("Must be a valid URL")
+    .optional()
+    .transform(s => s?.trim()),
+}).refine(data => {
+  if (data.sourceType === "url" && !data.sourceUrl) {
+    return false;
+  }
+  return true;
+}, {
+  message: "URL is required when source type is URL",
+  path: ["sourceUrl"],
 });
 
 type DocForm = z.infer<typeof docSchema>;
 
-const docStatusIcon: Record<string, React.ReactNode> = {
-  ready: <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />,
-  pending: <Clock className="w-3.5 h-3.5 text-yellow-400" />,
-  processing: <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />,
-  error: <AlertCircle className="w-3.5 h-3.5 text-red-400" />,
+// ----------------------------------------------------------------------
+// Document status helpers (memoized)
+// ----------------------------------------------------------------------
+const getDocStatusIcon = (status: string): React.ReactNode => {
+  switch (status) {
+    case "ready": return <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />;
+    case "pending": return <Clock className="w-3.5 h-3.5 text-yellow-400" />;
+    case "processing": return <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />;
+    case "error": return <AlertCircle className="w-3.5 h-3.5 text-red-400" />;
+    default: return <Clock className="w-3.5 h-3.5 text-muted-foreground" />;
+  }
 };
 
-const docStatusColors: Record<string, string> = {
-  ready: "bg-green-500/15 text-green-400 border-green-500/20",
-  pending: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
-  processing: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  error: "bg-red-500/15 text-red-400 border-red-500/20",
+const getDocStatusClass = (status: string): string => {
+  switch (status) {
+    case "ready": return "bg-green-500/15 text-green-400 border-green-500/20";
+    case "pending": return "bg-yellow-500/15 text-yellow-400 border-yellow-500/20";
+    case "processing": return "bg-blue-500/15 text-blue-400 border-blue-500/20";
+    case "error": return "bg-red-500/15 text-red-400 border-red-500/20";
+    default: return "bg-gray-500/15 text-gray-400 border-gray-500/20";
+  }
 };
 
+// ----------------------------------------------------------------------
+// Main Component
+// ----------------------------------------------------------------------
 export default function ChatbotDetail() {
   const { id } = useParams<{ id: string }>();
-  const chatbotId = parseInt(id ?? "0");
+  const chatbotId = (() => {
+    const parsed = parseInt(id ?? "0");
+    return isNaN(parsed) ? 0 : parsed;
+  })();
+  
   const queryClient = useQueryClient();
   const [showDocForm, setShowDocForm] = useState(false);
   const [showCrawlDialog, setShowCrawlDialog] = useState(false);
+  const [scrapeInput, setScrapeInput] = useState("");
 
+  // --------------------------------------------------------------------
+  // Data fetching
+  // --------------------------------------------------------------------
   const { data: bot, isLoading: botLoading } = useGetChatbot(chatbotId, {
-    query: { enabled: !!chatbotId, queryKey: getGetChatbotQueryKey(chatbotId) },
+    query: { enabled: chatbotId > 0, queryKey: getGetChatbotQueryKey(chatbotId) },
   });
   const { data: docs, isLoading: docsLoading } = useListDocuments(chatbotId, {
-    query: { enabled: !!chatbotId, queryKey: getListDocumentsQueryKey(chatbotId) },
+    query: { enabled: chatbotId > 0, queryKey: getListDocumentsQueryKey(chatbotId) },
   });
   const { data: conversations } = useListConversations(chatbotId, {
-    query: { enabled: !!chatbotId, queryKey: getListConversationsQueryKey(chatbotId) },
+    query: { enabled: chatbotId > 0, queryKey: getListConversationsQueryKey(chatbotId) },
   });
   const { data: analytics } = useGetChatbotAnalytics(chatbotId, {
-    query: { enabled: !!chatbotId, queryKey: getGetChatbotAnalyticsQueryKey(chatbotId) },
+    query: { enabled: chatbotId > 0, queryKey: getGetChatbotAnalyticsQueryKey(chatbotId) },
   });
 
+  // --------------------------------------------------------------------
+  // Mutations
+  // --------------------------------------------------------------------
   const addDocument = useAddDocument();
   const deleteDocument = useDeleteDocument();
   const updateChatbot = useUpdateChatbot();
   const scrapeUrl = useScrapeUrl();
-  const [scrapeInput, setScrapeInput] = useState("");
 
   const docForm = useForm<DocForm>({
     resolver: zodResolver(docSchema),
-    defaultValues: { title: "", sourceType: "text", content: "", sourceUrl: "" },
+    defaultValues: {
+      title: "",
+      sourceType: "text",
+      content: "",
+      sourceUrl: "",
+    },
+    mode: "onChange",
   });
 
   const sourceType = docForm.watch("sourceType");
 
-  const handleFetchUrl = () => {
+  // Reset content and title when switching from URL to text? Not required but UX-friendly
+  const handleSourceTypeChange = useCallback((newType: "text" | "url") => {
+    docForm.setValue("sourceType", newType);
+    if (newType === "text") {
+      docForm.setValue("sourceUrl", "");
+    } else {
+      docForm.setValue("content", "");
+    }
+  }, [docForm]);
+
+  // Fetch URL content with better error handling
+  const handleFetchUrl = useCallback(async () => {
     const url = scrapeInput.trim();
-    if (!url) return;
+    if (!url) {
+      toast.error("Please enter a URL");
+      return;
+    }
+    if (!url.startsWith("http")) {
+      toast.error("URL must start with http:// or https://");
+      return;
+    }
     scrapeUrl.mutate(
       { id: chatbotId, data: { url } },
       {
         onSuccess: (result) => {
-          docForm.setValue("title", result.title, { shouldValidate: true });
-          docForm.setValue("content", result.content, { shouldValidate: true });
-          docForm.setValue("sourceUrl", result.url, { shouldValidate: true });
-          toast.success("Page fetched — review content below");
+          if (!result.title || !result.content) {
+            toast.warning("Page fetched but no readable content found. Please paste manually.");
+          } else {
+            docForm.setValue("title", result.title.trim() || "Untitled", { shouldValidate: true });
+            docForm.setValue("content", result.content, { shouldValidate: true });
+            docForm.setValue("sourceUrl", result.url, { shouldValidate: true });
+            toast.success("Page content fetched – review and adjust if needed");
+          }
         },
-        onError: (err: unknown) => {
-          const msg =
-            err instanceof Error
-              ? err.message
-              : "Could not fetch this URL. Try pasting the content manually.";
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Could not fetch URL. Try pasting content manually.";
           toast.error(msg);
         },
       }
     );
-  };
+  }, [scrapeInput, chatbotId, scrapeUrl, docForm]);
 
-  const handleAddDoc = (data: DocForm) => {
+  // Add document
+  const handleAddDoc = useCallback((data: DocForm) => {
     addDocument.mutate(
-      { id: chatbotId, data: { title: data.title, sourceType: data.sourceType, content: data.content, sourceUrl: data.sourceUrl } },
+      {
+        id: chatbotId,
+        data: {
+          title: data.title,
+          sourceType: data.sourceType,
+          content: data.content,
+          sourceUrl: data.sourceUrl,
+        },
+      },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey(chatbotId) });
           queryClient.invalidateQueries({ queryKey: getGetChatbotQueryKey(chatbotId) });
-          toast.success("Document added — embedding in progress");
+          toast.success("Document added – embedding in progress");
           docForm.reset();
           setShowDocForm(false);
+          setScrapeInput("");
         },
-        onError: () => toast.error("Failed to add document"),
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || "Failed to add document";
+          toast.error(msg);
+        },
       }
     );
-  };
+  }, [addDocument, chatbotId, queryClient, docForm]);
 
-  const handleDeleteDoc = (docId: number) => {
+  // Delete document with confirmation
+  const handleDeleteDoc = useCallback((docId: number, docTitle: string) => {
+    if (!confirm(`Delete document "${docTitle}"? This action cannot be undone.`)) return;
     deleteDocument.mutate(
       { id: chatbotId, docId },
       {
@@ -134,12 +216,13 @@ export default function ChatbotDetail() {
           queryClient.invalidateQueries({ queryKey: getGetChatbotQueryKey(chatbotId) });
           toast.success("Document deleted");
         },
-        onError: () => toast.error("Failed to delete document"),
+        onError: (err: any) => toast.error(err?.response?.data?.message || "Failed to delete document"),
       }
     );
-  };
+  }, [deleteDocument, chatbotId, queryClient]);
 
-  const handleToggleStatus = () => {
+  // Toggle chatbot active status
+  const handleToggleStatus = useCallback(() => {
     if (!bot) return;
     const newStatus = bot.status === "active" ? "inactive" : "active";
     updateChatbot.mutate(
@@ -149,10 +232,24 @@ export default function ChatbotDetail() {
           queryClient.invalidateQueries({ queryKey: getGetChatbotQueryKey(chatbotId) });
           toast.success(`Chatbot ${newStatus === "active" ? "activated" : "deactivated"}`);
         },
-        onError: () => toast.error("Failed to update status"),
+        onError: (err: any) => toast.error(err?.response?.data?.message || "Failed to update status"),
       }
     );
-  };
+  }, [bot, chatbotId, updateChatbot, queryClient]);
+
+  // --------------------------------------------------------------------
+  // Loading & Error states
+  // --------------------------------------------------------------------
+  if (chatbotId === 0) {
+    return (
+      <AppShell>
+        <div className="p-6 text-center">
+          <p className="text-muted-foreground">Invalid chatbot ID.</p>
+          <Link href="/dashboard"><Button className="mt-4">Back to dashboard</Button></Link>
+        </div>
+      </AppShell>
+    );
+  }
 
   if (botLoading) {
     return (
@@ -176,13 +273,16 @@ export default function ChatbotDetail() {
     );
   }
 
+  // --------------------------------------------------------------------
+  // Render
+  // --------------------------------------------------------------------
   return (
     <AppShell>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div>
           <Link href="/dashboard">
-            <Button variant="ghost" size="sm" className="gap-2 mb-4 -ml-2 text-muted-foreground">
+            <Button variant="ghost" size="sm" className="gap-2 mb-4 -ml-2 text-muted-foreground" aria-label="Go back to dashboard">
               <ArrowLeft className="w-4 h-4" />
               Dashboard
             </Button>
@@ -219,6 +319,7 @@ export default function ChatbotDetail() {
                 onClick={handleToggleStatus}
                 disabled={updateChatbot.isPending}
                 data-testid="button-toggle-status"
+                aria-label={bot.status === "active" ? "Deactivate chatbot" : "Activate chatbot"}
               >
                 {bot.status === "active" ? "Deactivate" : "Activate"}
               </Button>
@@ -226,8 +327,9 @@ export default function ChatbotDetail() {
           </div>
         </div>
 
+        {/* Tabs */}
         <Tabs defaultValue="knowledge">
-          <TabsList className="bg-card border border-border">
+          <TabsList className="bg-card border border-border" aria-label="Chatbot sections">
             <TabsTrigger value="knowledge" className="gap-2 text-xs">
               <FileText className="w-3.5 h-3.5" />
               Knowledge Base ({docs?.length ?? 0})
@@ -246,7 +348,7 @@ export default function ChatbotDetail() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Knowledge Base Tab */}
+          {/* ===== Knowledge Base Tab ===== */}
           <TabsContent value="knowledge" className="mt-4 space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-sm text-muted-foreground">Upload text content or crawl a website to train your chatbot.</p>
@@ -279,130 +381,141 @@ export default function ChatbotDetail() {
               chatbotId={chatbotId}
             />
 
+            {/* Add Document Form */}
             {showDocForm && (
               <div className="rounded-xl border border-border bg-card p-5">
                 <h3 className="font-medium mb-4 text-sm">Add document</h3>
                 <Form {...docForm}>
                   <form onSubmit={docForm.handleSubmit(handleAddDoc)} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <fieldset disabled={addDocument.isPending} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={docForm.control}
+                          name="title"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">Title</FormLabel>
+                              <FormControl>
+                                <Input placeholder="e.g. Refund Policy" data-testid="input-doc-title" {...field} />
+                              </FormControl>
+                              <FormDescription className="text-xs">Max 200 characters</FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={docForm.control}
+                          name="sourceType"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">Source type</FormLabel>
+                              <Select
+                                onValueChange={(val) => {
+                                  field.onChange(val);
+                                  handleSourceTypeChange(val as "text" | "url");
+                                }}
+                                defaultValue={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-source-type">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="text">
+                                    <span className="flex items-center gap-2"><AlignLeft className="w-3.5 h-3.5" />Plain text</span>
+                                  </SelectItem>
+                                  <SelectItem value="url">
+                                    <span className="flex items-center gap-2"><Globe className="w-3.5 h-3.5" />URL / webpage</span>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {sourceType === "url" && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-foreground">URL to scrape</p>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="https://yoursite.com/docs/faq"
+                              value={scrapeInput}
+                              onChange={(e) => setScrapeInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleFetchUrl(); } }}
+                              data-testid="input-source-url"
+                              className="flex-1"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleFetchUrl}
+                              disabled={!scrapeInput.trim() || scrapeUrl.isPending}
+                              className="gap-1.5 whitespace-nowrap"
+                              data-testid="button-fetch-url"
+                            >
+                              {scrapeUrl.isPending ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Download className="w-3.5 h-3.5" />
+                              )}
+                              {scrapeUrl.isPending ? "Fetching…" : "Fetch content"}
+                            </Button>
+                          </div>
+                          <FormDescription className="text-xs">
+                            Click "Fetch content" to automatically extract text from the page. Works best with documentation and blog posts.
+                          </FormDescription>
+                        </div>
+                      )}
+
                       <FormField
                         control={docForm.control}
-                        name="title"
+                        name="content"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs">Title</FormLabel>
+                            <div className="flex items-center justify-between mb-1">
+                              <FormLabel className="text-xs">
+                                {sourceType === "url" ? "Extracted content" : "Content"}
+                              </FormLabel>
+                              {field.value && (
+                                <span className="text-xs text-muted-foreground">
+                                  {field.value.length.toLocaleString()} / 50,000 chars
+                                </span>
+                              )}
+                            </div>
                             <FormControl>
-                              <Input placeholder="e.g. Refund Policy" data-testid="input-doc-title" {...field} />
+                              <Textarea
+                                placeholder={
+                                  sourceType === "url"
+                                    ? "Paste URL above and click Fetch, or paste content manually…"
+                                    : "Paste your documentation, FAQs, policies, etc…"
+                                }
+                                className="resize-none h-36 font-mono text-xs"
+                                data-testid="input-doc-content"
+                                {...field}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={docForm.control}
-                        name="sourceType"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs">Source type</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger data-testid="select-source-type">
-                                  <SelectValue />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="text">
-                                  <span className="flex items-center gap-2"><AlignLeft className="w-3.5 h-3.5" />Plain text</span>
-                                </SelectItem>
-                                <SelectItem value="url">
-                                  <span className="flex items-center gap-2"><Globe className="w-3.5 h-3.5" />URL / webpage</span>
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
 
-                    {sourceType === "url" && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-foreground">URL to scrape</p>
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="https://yoursite.com/docs/faq"
-                            value={scrapeInput}
-                            onChange={(e) => setScrapeInput(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleFetchUrl(); } }}
-                            data-testid="input-source-url"
-                            className="flex-1"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleFetchUrl}
-                            disabled={!scrapeInput.trim() || scrapeUrl.isPending}
-                            className="gap-1.5 whitespace-nowrap"
-                            data-testid="button-fetch-url"
-                          >
-                            {scrapeUrl.isPending ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Download className="w-3.5 h-3.5" />
-                            )}
-                            {scrapeUrl.isPending ? "Fetching…" : "Fetch content"}
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Click "Fetch content" to automatically extract text from the page. Works best with documentation and blog posts.
-                        </p>
+                      <div className="flex gap-2">
+                        <Button type="submit" size="sm" disabled={addDocument.isPending || !docForm.formState.isValid} data-testid="button-submit-doc">
+                          {addDocument.isPending ? "Adding..." : "Add & embed"}
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowDocForm(false)}>Cancel</Button>
                       </div>
-                    )}
-
-                    <FormField
-                      control={docForm.control}
-                      name="content"
-                      render={({ field }) => (
-                        <FormItem>
-                          <div className="flex items-center justify-between mb-1">
-                            <FormLabel className="text-xs">
-                              {sourceType === "url" ? "Extracted content" : "Content"}
-                            </FormLabel>
-                            {field.value && (
-                              <span className="text-xs text-muted-foreground">
-                                {field.value.length.toLocaleString()} chars
-                              </span>
-                            )}
-                          </div>
-                          <FormControl>
-                            <Textarea
-                              placeholder={
-                                sourceType === "url"
-                                  ? "Paste URL above and click Fetch, or paste content manually…"
-                                  : "Paste your documentation, FAQs, policies, etc…"
-                              }
-                              className="resize-none h-36 font-mono text-xs"
-                              data-testid="input-doc-content"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={addDocument.isPending} data-testid="button-submit-doc">
-                        {addDocument.isPending ? "Adding..." : "Add & embed"}
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setShowDocForm(false)}>Cancel</Button>
-                    </div>
+                    </fieldset>
                   </form>
                 </Form>
               </div>
             )}
 
+            {/* Documents List */}
             {docsLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
@@ -417,19 +530,20 @@ export default function ChatbotDetail() {
               <div className="space-y-2">
                 {docs?.map((doc) => (
                   <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3" data-testid={`row-doc-${doc.id}`}>
-                    {docStatusIcon[doc.status] ?? <Clock className="w-3.5 h-3.5 text-muted-foreground" />}
+                    {getDocStatusIcon(doc.status)}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{doc.title}</p>
                       <p className="text-xs text-muted-foreground">{doc.sourceType} &middot; {doc.chunkCount} chunks</p>
                     </div>
-                    <Badge variant="outline" className={`text-xs capitalize ${docStatusColors[doc.status] ?? ""}`}>
+                    <Badge variant="outline" className={`text-xs capitalize ${getDocStatusClass(doc.status)}`}>
                       {doc.status}
                     </Badge>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDeleteDoc(doc.id)}
+                      onClick={() => handleDeleteDoc(doc.id, doc.title)}
                       data-testid={`button-delete-doc-${doc.id}`}
+                      aria-label={`Delete document ${doc.title}`}
                     >
                       <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                     </Button>
@@ -439,7 +553,7 @@ export default function ChatbotDetail() {
             )}
           </TabsContent>
 
-          {/* Conversations Tab */}
+          {/* ===== Conversations Tab ===== */}
           <TabsContent value="conversations" className="mt-4">
             {conversations?.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border bg-card/50 p-10 text-center">
@@ -463,7 +577,7 @@ export default function ChatbotDetail() {
             )}
           </TabsContent>
 
-          {/* Analytics Tab */}
+          {/* ===== Analytics Tab ===== */}
           <TabsContent value="analytics" className="mt-4">
             {analytics ? (
               <div className="grid grid-cols-3 gap-4">
@@ -485,7 +599,7 @@ export default function ChatbotDetail() {
             )}
           </TabsContent>
 
-          {/* Settings Tab */}
+          {/* ===== Settings Tab ===== */}
           <TabsContent value="settings" className="mt-4">
             <SettingsPanel bot={bot} chatbotId={chatbotId} />
           </TabsContent>
@@ -495,16 +609,19 @@ export default function ChatbotDetail() {
   );
 }
 
+// ----------------------------------------------------------------------
+// Settings Panel Component (improved validation)
+// ----------------------------------------------------------------------
 function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
   const queryClient = useQueryClient();
   const updateChatbot = useUpdateChatbot();
 
   const schema = z.object({
-    name: z.string().min(1),
-    description: z.string().optional(),
-    welcomeMessage: z.string().optional(),
-    systemPrompt: z.string().optional(),
-    primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    name: z.string().min(1, "Name is required").max(80).transform(s => s.trim()),
+    description: z.string().max(500).optional().transform(s => s?.trim()),
+    welcomeMessage: z.string().max(300).optional().transform(s => s?.trim()),
+    systemPrompt: z.string().max(5000, "System prompt cannot exceed 5000 characters").optional(),
+    primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex color (e.g. #2563eb)").optional(),
   });
 
   const form = useForm({
@@ -516,9 +633,12 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
       systemPrompt: bot.systemPrompt ?? "",
       primaryColor: bot.primaryColor ?? "#2563eb",
     },
+    mode: "onChange",
   });
 
-  const onSubmit = (data: any) => {
+  const systemPromptValue = form.watch("systemPrompt") || "";
+
+  const onSubmit = useCallback((data: any) => {
     updateChatbot.mutate(
       { id: chatbotId, data },
       {
@@ -526,47 +646,76 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
           queryClient.invalidateQueries({ queryKey: getGetChatbotQueryKey(chatbotId) });
           toast.success("Settings saved");
         },
-        onError: () => toast.error("Failed to save settings"),
+        onError: (err: any) => toast.error(err?.response?.data?.message || "Failed to save settings"),
       }
     );
-  };
+  }, [updateChatbot, chatbotId, queryClient]);
 
   return (
     <div className="rounded-xl border border-border bg-card p-6 max-w-2xl">
       <h3 className="font-semibold mb-5">Chatbot settings</h3>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-          <FormField control={form.control} name="name" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Name</FormLabel>
-              <FormControl><Input data-testid="input-settings-name" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="description" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl><Textarea className="resize-none h-20" data-testid="input-settings-description" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="welcomeMessage" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Welcome message</FormLabel>
-              <FormControl><Input data-testid="input-settings-welcome" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="systemPrompt" render={({ field }) => (
-            <FormItem>
-              <FormLabel>System prompt</FormLabel>
-              <FormControl><Textarea className="resize-none h-28 font-mono text-xs" placeholder="You are a helpful customer support assistant for Acme Inc..." data-testid="input-settings-prompt" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <Button type="submit" disabled={updateChatbot.isPending} data-testid="button-save-settings">
-            {updateChatbot.isPending ? "Saving..." : "Save changes"}
-          </Button>
+          <fieldset disabled={updateChatbot.isPending}>
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name *</FormLabel>
+                  <FormControl><Input data-testid="input-settings-name" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl><Textarea className="resize-none h-20" data-testid="input-settings-description" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="welcomeMessage"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Welcome message</FormLabel>
+                  <FormControl><Input data-testid="input-settings-welcome" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="systemPrompt"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex justify-between items-center">
+                    <FormLabel>System prompt</FormLabel>
+                    <span className="text-xs text-muted-foreground">{systemPromptValue.length} / 5000</span>
+                  </div>
+                  <FormControl>
+                    <Textarea
+                      className="resize-none h-28 font-mono text-xs"
+                      placeholder="You are a helpful customer support assistant for Acme Inc..."
+                      data-testid="input-settings-prompt"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-xs">Instructions that define the chatbot's behavior.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button type="submit" disabled={updateChatbot.isPending || !form.formState.isValid} data-testid="button-save-settings">
+              {updateChatbot.isPending ? "Saving..." : "Save changes"}
+            </Button>
+          </fieldset>
         </form>
       </Form>
     </div>
