@@ -58,23 +58,23 @@ export default function EmbedPage() {
     }
   }, [widgetData]);
 
-  // Instructions list (static, memoized)
+  // Instructions list (static, memoized) - English
   const instructions = useMemo(
     () => [
       {
         step: "1",
-        title: "Script tag kooppi",
-        desc: "Battoona 'Copy' tuquun embed script tag kooppi godhu.",
+        title: "Copy the script tag",
+        desc: "Click the 'Copy' button to copy the embed script tag.",
       },
       {
         step: "2",
-        title: "Website HTML keessan maxxansaa",
-        desc: "Script tag kana <head> ykn <body> cufuu dura (</body>) page hundarra maxxansaa.",
+        title: "Paste into your website HTML",
+        desc: "Paste this script tag into <head> or just before the closing </body> tag on every page.",
       },
       {
         step: "3",
-        title: "Xumura!",
-        desc: "Chat widget akka floating button bottom-right keessanitti mul'ata.",
+        title: "Done!",
+        desc: "The chat widget will appear as a floating button at the bottom-right corner.",
       },
     ],
     []
@@ -87,10 +87,10 @@ export default function EmbedPage() {
         <div className="p-6 max-w-3xl mx-auto text-center">
           <Alert variant="destructive" className="max-w-md mx-auto">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>Chatbot ID sirrii miti.</AlertDescription>
+            <AlertDescription>Invalid chatbot ID.</AlertDescription>
           </Alert>
           <Link href="/dashboard">
-            <Button className="mt-4">Gara dashboard deebi'i</Button>
+            <Button className="mt-4">Back to dashboard</Button>
           </Link>
         </div>
       </AppShell>
@@ -104,13 +104,13 @@ export default function EmbedPage() {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              {botError?.message || scriptError?.message || "Waan tokko dogoggore. Maaloo deebi'ii yaali."}
+              {botError?.message || scriptError?.message || "Something went wrong. Please try again."}
             </AlertDescription>
           </Alert>
           <Link href={`/chatbots/${chatbotId}`}>
             <Button variant="outline" className="mt-4">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Gara chatbot deebi'i
+              Back to chatbot
             </Button>
           </Link>
         </div>
@@ -141,10 +141,10 @@ export default function EmbedPage() {
       <AppShell>
         <div className="p-6 max-w-3xl mx-auto text-center">
           <Alert>
-            <AlertDescription>Script tag hin argamne. Chatbot keessan sirriitti qindeessaa?</AlertDescription>
+            <AlertDescription>Script tag not found. Is your chatbot properly configured?</AlertDescription>
           </Alert>
           <Link href={`/chatbots/${chatbotId}`}>
-            <Button className="mt-4">Deebi'i</Button>
+            <Button className="mt-4">Back</Button>
           </Link>
         </div>
       </AppShell>
@@ -164,15 +164,15 @@ export default function EmbedPage() {
               variant="ghost"
               size="sm"
               className="gap-2 mb-4 -ml-2 text-muted-foreground"
-              aria-label="Gara chatbot detail deebi'i"
+              aria-label="Back to chatbot details"
             >
               <ArrowLeft className="w-4 h-4" />
-              Gara {chatbotName} deebi'i
+              Back to {chatbotName}
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight">Widget maxxansuu (embed)</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Embed Widget</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Script tag kana website keessanitti dabaluun chat widget banamaa.
+            Add this script tag to your website to enable the chat widget.
           </p>
         </div>
 
@@ -192,7 +192,7 @@ export default function EmbedPage() {
               data-testid="button-copy-script"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? "Koopp'e!" : "Kooppi"}
+              {copied ? "Copied!" : "Copy"}
             </Button>
           </div>
           <div className="p-4">
@@ -208,7 +208,7 @@ export default function EmbedPage() {
 
         {/* Instructions */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <h2 className="font-semibold text-sm">Akka itti fayyadamtan</h2>
+          <h2 className="font-semibold text-sm">How to use</h2>
           <div className="space-y-4 text-sm">
             {instructions.map((item) => (
               <div key={item.step} className="flex gap-3">
@@ -226,10 +226,10 @@ export default function EmbedPage() {
 
         {/* Widget preview */}
         <div className="rounded-xl border border-border bg-card p-5">
-          <h2 className="font-semibold text-sm mb-4">Mul'ata widget</h2>
+          <h2 className="font-semibold text-sm mb-4">Widget Preview</h2>
           <div className="relative bg-muted/20 rounded-lg h-48 border border-border/50 overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-xs text-muted-foreground">Website keessan qabiyyee (content)</p>
+              <p className="text-xs text-muted-foreground">Your website content</p>
             </div>
             <div className="absolute bottom-4 right-4">
               <div
@@ -243,7 +243,7 @@ export default function EmbedPage() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            Buttoon kun bottom-right keessatti mul'ata. Tuquun chat interface banama.
+            This button appears at bottom-right. Click to open chat interface.
           </p>
         </div>
 
@@ -258,11 +258,11 @@ export default function EmbedPage() {
           >
             <Button variant="outline" className="gap-2" disabled={!widgetData.chatbotUid}>
               <ExternalLink className="w-4 h-4" />
-              Tab haaraa keessatti widget qabadhu
+              Test widget in new tab
             </Button>
           </a>
           <p className="text-xs text-muted-foreground">
-            Widget yeroo xiyyeeffannoo (preview) akka namooti keessan argu.
+            Preview how your visitors will see the widget.
           </p>
         </div>
       </div>
