@@ -71,7 +71,7 @@ export default function Dashboard() {
   );
 
   const handleDelete = (id: number, name: string) => {
-    if (!confirm(`"${name}" balleessuu barbaaddaa? Kan deebisuu hin danda'u.`)) return;
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) return;
     deleteChatbot.mutate(
       { id },
       {
@@ -79,10 +79,10 @@ export default function Dashboard() {
           // Invalidate both queries to refresh data
           queryClient.invalidateQueries({ queryKey: getListChatbotsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
-          toast.success("Chatbot balleeffame");
+          toast.success("Chatbot deleted");
         },
         onError: (err: any) => {
-          const msg = err?.response?.data?.message || "Chatbot balleessuun dadhabe";
+          const msg = err?.response?.data?.message || "Failed to delete chatbot";
           toast.error(msg);
         },
       }
@@ -97,7 +97,7 @@ export default function Dashboard() {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              {statsError?.message || botsError?.message || "Waan tokko dogoggore. Maaloo booda deebi'ii yaali."}
+              {statsError?.message || botsError?.message || "Something went wrong. Please try again later."}
             </AlertDescription>
           </Alert>
         </div>
@@ -113,13 +113,13 @@ export default function Dashboard() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Chatbot AI keessan to'achaa fi hojii isaa ilaalaa
+              Manage your AI chatbots and monitor their performance
             </p>
           </div>
           <Link href="/chatbots/new">
-            <Button className="gap-2" data-testid="button-new-chatbot" aria-label="Chatbot haaraa uumi">
+            <Button className="gap-2" data-testid="button-new-chatbot" aria-label="Create new chatbot">
               <Plus className="w-4 h-4" />
-              Chatbot haaraa
+              New chatbot
             </Button>
           </Link>
         </div>
@@ -159,8 +159,8 @@ export default function Dashboard() {
         {/* Chatbots List */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-lg">Chatbotoota keessan</h2>
-            <span className="text-sm text-muted-foreground">{chatbots?.length ?? 0} guutuuf</span>
+            <h2 className="font-semibold text-lg">Your chatbots</h2>
+            <span className="text-sm text-muted-foreground">{chatbots?.length ?? 0} total</span>
           </div>
 
           {botsLoading ? (
@@ -181,14 +181,14 @@ export default function Dashboard() {
           ) : chatbots?.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-card/50 p-12 text-center">
               <Bot className="w-10 h-10 text-muted-foreground mx-auto mb-4" aria-hidden="true" />
-              <h3 className="font-medium mb-2">Chatbot hin jiru</h3>
+              <h3 className="font-medium mb-2">No chatbots yet</h3>
               <p className="text-sm text-muted-foreground mb-6">
-                Chatbot AI keessan kan jalqabaa uumaa fi maamiltootaaf deeggarsa adda ta'e kennuu.
+                Create your first AI chatbot to start providing personalized support to your customers.
               </p>
               <Link href="/chatbots/new">
                 <Button className="gap-2">
                   <Plus className="w-4 h-4" />
-                  Chatbot jalqabaa uumi
+                  Create your first chatbot
                 </Button>
               </Link>
             </div>
@@ -215,11 +215,11 @@ export default function Dashboard() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-medium truncate">{bot.name}</h3>
                         <Badge variant="outline" className={`text-xs capitalize ${getStatusColor(bot.status)}`}>
-                          {bot.status === "active" ? "Aktiivii" : bot.status === "training" ? "Leenjii" : "Inaktii"}
+                          {bot.status === "active" ? "Active" : bot.status === "training" ? "Training" : "Inactive"}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
-                        {bot.description ?? "Ibsi hin jiru"} &middot; {bot.documentCount} documents &middot;{" "}
+                        {bot.description ?? "No description"} &middot; {bot.documentCount} documents &middot;{" "}
                         {bot.conversationCount} conversations
                       </p>
                     </div>
@@ -232,10 +232,10 @@ export default function Dashboard() {
                           size="sm"
                           className="gap-1.5"
                           data-testid={`button-manage-${bot.id}`}
-                          aria-label={`${bot.name} to'achuu`}
+                          aria-label={`Manage ${bot.name}`}
                         >
                           <Settings className="w-3.5 h-3.5" />
-                          To'achuu
+                          Manage
                         </Button>
                       </Link>
                       <Link href={`/chatbots/${bot.id}/embed`}>
@@ -244,7 +244,7 @@ export default function Dashboard() {
                           size="sm"
                           className="gap-1.5"
                           data-testid={`button-embed-${bot.id}`}
-                          aria-label={`${bot.name} embed code argachuu`}
+                          aria-label={`Get embed code for ${bot.name}`}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </Button>
@@ -255,7 +255,7 @@ export default function Dashboard() {
                             variant="ghost"
                             size="sm"
                             data-testid={`button-more-${bot.id}`}
-                            aria-label={`${bot.name} filannoowwan`}
+                            aria-label={`More options for ${bot.name}`}
                           >
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
@@ -266,7 +266,7 @@ export default function Dashboard() {
                             onClick={() => handleDelete(bot.id, bot.name)}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            Chatbot balleessi
+                            Delete chatbot
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
