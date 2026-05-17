@@ -3,14 +3,7 @@
   "buildCommand": "node ./build-vercel.mjs",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "outputDirectory": "../../api",
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/handler.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/api/handler.js"
-    }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/handler" }
   ]
 }
