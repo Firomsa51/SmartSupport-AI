@@ -25,7 +25,7 @@ globalThis.require = createRequire(import.meta.url);
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 // Workspace root is two levels up from artifacts/api-server/
 const workspaceRoot = path.resolve(artifactDir, "..", "..");
-const apiDir = path.resolve(workspaceRoot, "api");
+const apiDir = path.resolve(artifactDir, "api");
 const outfile = path.resolve(apiDir, "handler.js");
 
 async function buildVercelHandler() {
