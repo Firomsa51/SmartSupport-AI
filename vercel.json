@@ -3,7 +3,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "artifacts/api-server/api/handler.js"
+      "dest": "/api/handler.js"
     },
     {
       "handle": "filesystem"
