@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "buildCommand": "node ./build-vercel.mjs",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/handler.js"
+    }
+  ]
+}
