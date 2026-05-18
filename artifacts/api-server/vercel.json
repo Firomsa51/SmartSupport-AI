@@ -1,17 +1,6 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/handler.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/api/handler.js"
-    }
-  ],
   "buildCommand": "node ./build-vercel.mjs",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "outputDirectory": "api"
 }
