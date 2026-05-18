@@ -1,5 +1,18 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "buildCommand": "bash ./build-and-package.sh",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "outputDirectory": "dist",
+  "functions": {
+    "dist/index.mjs": {
+      "runtime": "nodejs22.x",
+      "includeFiles": "dist/**",
+      "excludeFiles": "**/*.test.js"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/" }
+  ]
 }
