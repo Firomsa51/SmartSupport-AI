@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "node ./build-vercel.mjs",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "outputDirectory": "api"
+  "buildCommand": "bash ./build-and-package.sh",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
 }
