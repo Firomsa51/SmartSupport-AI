@@ -9,12 +9,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  id: string; // ✅ FIX 4: stable unique key
 }
 
-/**
- * Generates or retrieves a persistent session ID for the given chatbot UID.
- * Uses sessionStorage to remember the session across page reloads within the same tab.
- */
 const getOrCreateSessionId = (uid: string): string => {
   if (!uid) return generateFallbackSessionId();
   try {
@@ -25,18 +22,18 @@ const getOrCreateSessionId = (uid: string): string => {
     sessionStorage.setItem(storageKey, newId);
     return newId;
   } catch {
-    // sessionStorage may be disabled (e.g., private mode) – fallback to in-memory ID
     return generateFallbackSessionId();
   }
 };
 
-const generateSessionId = (): string => {
-  return `sess_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-};
+const generateSessionId = (): string =>
+  `sess_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
-const generateFallbackSessionId = (): string => {
-  return `sess_fallback_${Date.now()}_${Math.random().toString(36)}`;
-};
+const generateFallbackSessionId = (): string =>
+  `sess_fallback_${Date.now()}_${Math.random().toString(36)}`;
+
+const generateMsgId = (): string =>
+  `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 export default function WidgetPage() {
   const { uid } = useParams<{ uid: string }>();
@@ -44,58 +41,66 @@ export default function WidgetPage() {
   const [input, setInput] = useState("");
   const [hasError, setHasError] = useState(false);
 
-  // Memoize session ID to avoid re‑creation on re‑renders
   const sessionId = useMemo(() => getOrCreateSessionId(uid ?? "unknown"), [uid]);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const sendMessage = useWidgetChat();
-
   const isSending = sendMessage.isPending;
   const hasWelcome = messages.length === 0;
 
-  // Scroll to bottom whenever messages change or sending status changes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  // Focus the input on mount for better UX
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  // ✅ FIX 1 & 2: accept text param so retry can pass value directly
+  const doSend = useCallback(
+    (text: string) => {
+      if (!text.trim() || !uid || isSending) return;
+
+      setHasError(false);
+      setInput("");
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: text.trim(), id: generateMsgId() },
+      ]);
+
+      sendMessage.mutate(
+        { chatbotUid: uid, data: { message: text.trim(), sessionId } },
+        {
+          onSuccess: (data) => {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: data.reply, id: generateMsgId() },
+            ]);
+            setHasError(false);
+          },
+          onError: (err) => {
+            console.error("Chat error:", err);
+            setHasError(true);
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: "Sorry, I couldn't get a response. Please try again.",
+                id: generateMsgId(),
+              },
+            ]);
+          },
+        }
+      );
+    },
+    [uid, isSending, sendMessage, sessionId]
+  );
+
   const handleSend = useCallback(() => {
-    const trimmed = input.trim();
-    if (!trimmed || !uid || isSending) return;
-
-    setHasError(false);
-    setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
-
-    sendMessage.mutate(
-      { chatbotUid: uid, data: { message: trimmed, sessionId } },
-      {
-        onSuccess: (data) => {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: data.reply },
-          ]);
-          setHasError(false);
-        },
-        onError: (err) => {
-          console.error("Chat error:", err);
-          setHasError(true);
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: "Sorry, I couldn't get a response. Please try again.",
-            },
-          ]);
-        },
-      }
-    );
-  }, [input, uid, isSending, sendMessage, sessionId]);
+    doSend(input);
+  }, [input, doSend]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -107,20 +112,16 @@ export default function WidgetPage() {
     [handleSend]
   );
 
+  // ✅ FIX 1: retry now passes text directly — no stale state issue
   const handleRetry = useCallback(() => {
-    if (hasError) {
-      // Re‑send the last user message if there was a failure
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-      if (lastUserMsg) {
-        setInput(lastUserMsg.content);
-        // Remove the failed assistant message (if any) and the last user message will be re‑added on send
-        setMessages((prev) => prev.slice(0, -1));
-        handleSend();
-      }
+    if (!hasError) return;
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    if (lastUserMsg) {
+      setMessages((prev) => prev.slice(0, -1)); // remove failed assistant msg
+      doSend(lastUserMsg.content);
     }
-  }, [hasError, messages, handleSend]);
+  }, [hasError, messages, doSend]);
 
-  // If chatbot UID is missing, show error state
   if (!uid) {
     return (
       <div className="flex flex-col h-screen bg-slate-950 text-slate-100 items-center justify-center p-4">
@@ -153,27 +154,31 @@ export default function WidgetPage() {
         <div className="ml-auto w-2 h-2 rounded-full bg-green-500" aria-label="Online status" />
       </div>
 
-      {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3" role="log" aria-label="Chat messages">
+      {/* Messages */}
+      {/* ✅ FIX 3: added aria-live="polite" */}
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+        role="log"
+        aria-live="polite"
+        aria-label="Chat messages"
+      >
         {hasWelcome && (
           <div className="flex gap-2.5 items-start">
             <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5" aria-hidden="true">
               <Bot className="w-3 h-3 text-white" />
             </div>
-            <div
-              className="bg-slate-800 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm max-w-xs"
-              data-testid="msg-welcome"
-            >
+            <div className="bg-slate-800 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm max-w-xs" data-testid="msg-welcome">
               Hi! How can I help you today?
             </div>
           </div>
         )}
 
-        {messages.map((msg, idx) => (
+        {/* ✅ FIX 4: use msg.id as key */}
+        {messages.map((msg) => (
           <div
-            key={idx}
+            key={msg.id}
             className={`flex gap-2.5 items-start ${msg.role === "user" ? "flex-row-reverse" : ""}`}
-            data-testid={`msg-${msg.role}-${idx}`}
+            data-testid={`msg-${msg.role}-${msg.id}`}
           >
             <div
               className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
@@ -227,7 +232,7 @@ export default function WidgetPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input Area */}
+      {/* Input */}
       <div className="px-3 pb-3 pt-2 border-t border-slate-800">
         <div className="flex gap-2">
           <Input
