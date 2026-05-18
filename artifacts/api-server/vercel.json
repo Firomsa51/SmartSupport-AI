@@ -2,6 +2,12 @@
   "version": 2,
   "buildCommand": "node ./build-vercel.mjs",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "functions": {
+    "api/handler.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/handler" }
   ]
