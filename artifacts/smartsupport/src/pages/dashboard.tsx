@@ -224,31 +224,22 @@ export default function Dashboard() {
                       </p>
                     </div>
 
-                    {/* Actions */}
+                    {/* Actions - Fixed nesting: Button as child of Link using asChild pattern */}
                     <div className="flex items-center gap-2">
-                      <Link href={`/chatbots/${bot.id}`}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5"
-                          data-testid={`button-manage-${bot.id}`}
-                          aria-label={`Manage ${bot.name}`}
-                        >
+                      <Button asChild variant="outline" size="sm" className="gap-1.5">
+                        <Link href={`/chatbots/${bot.id}`} data-testid={`button-manage-${bot.id}`} aria-label={`Manage ${bot.name}`}>
                           <Settings className="w-3.5 h-3.5" />
                           Manage
-                        </Button>
-                      </Link>
-                      <Link href={`/chatbots/${bot.id}/embed`}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5"
-                          data-testid={`button-embed-${bot.id}`}
-                          aria-label={`Get embed code for ${bot.name}`}
-                        >
+                        </Link>
+                      </Button>
+
+                      <Button asChild variant="ghost" size="sm" className="gap-1.5">
+                        <Link href={`/chatbots/${bot.id}/embed`} data-testid={`button-embed-${bot.id}`} aria-label={`Get embed code for ${bot.name}`}>
                           <ExternalLink className="w-3.5 h-3.5" />
-                        </Button>
-                      </Link>
+                          <span className="sr-only">Embed</span>
+                        </Link>
+                      </Button>
+
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
