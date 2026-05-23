@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useUser, useClerk } from "@clerk/react";
+import { useUser, useClerk } from "@clerk/clerk-react";
 import { useTheme } from "@/components/theme-provider";
 import { Bot, LayoutDashboard, Moon, Sun, LogOut, MessageSquare, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
