@@ -24,12 +24,8 @@ import ChatbotDetail from "@/pages/chatbots/detail";
 import EmbedPage from "@/pages/chatbots/embed";
 import WidgetPage from "@/pages/widget";
 
-const clerkPubKey = (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string) || "pk_live_Y2xlcmsuc21hcnQtc3VwcG9ydC1haS1maXJvLnZlcmNlbC5hcCQ";
+const clerkPubKey = "pk_live_Y2xlcmsuc21hcnQtc3VwcG9ydC1haS1maXJvLnZlcmNlbC5hcCQ";
 const basePath = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
-}
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -75,6 +71,31 @@ const clerkAppearance = {
       "border-slate-600 bg-slate-800 hover:bg-slate-700",
   },
 };
+
+function LoadingScreen() {
+  return (
+    <div style={{
+      minHeight: "100vh",
+      backgroundColor: "#0f172a",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      gap: "16px"
+    }}>
+      <div style={{
+        width: "40px",
+        height: "40px",
+        border: "3px solid #334155",
+        borderTop: "3px solid #3b82f6",
+        borderRadius: "50%",
+        animation: "spin 1s linear infinite"
+      }} />
+      <p style={{ color: "#94a3b8", fontSize: "14px" }}>Loading SmartSupport...</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
 
 interface ErrorBoundaryState { hasError: boolean; message: string }
 class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
@@ -156,7 +177,7 @@ function SignUpPage() {
 
 function HomeRedirect() {
   const { isLoaded } = useAuth();
-  if (!isLoaded) return null;
+  if (!isLoaded) return <LoadingScreen />;
 
   return (
     <>
@@ -172,7 +193,7 @@ function HomeRedirect() {
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isLoaded } = useAuth();
-  if (!isLoaded) return null;
+  if (!isLoaded) return <LoadingScreen />;
 
   return (
     <>
