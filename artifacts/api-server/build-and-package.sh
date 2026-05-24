@@ -2,9 +2,9 @@
 set -e
 
 # Push database schema to create tables
-cd ../../lib/db
-pnpm dlx drizzle-kit push
-cd ../../artifacts/api-server
+cd ../..
+node_modules/.bin/drizzle-kit push --config=lib/db/drizzle.config.ts
+cd artifacts/api-server
 
 # Build the serverless handler
 node ./build-vercel.mjs
