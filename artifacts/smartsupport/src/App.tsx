@@ -24,7 +24,7 @@ import ChatbotDetail from "@/pages/chatbots/detail";
 import EmbedPage from "@/pages/chatbots/embed";
 import WidgetPage from "@/pages/widget";
 
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
+const clerkPubKey = (import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string) || "pk_live_Y2xlcmsuc21hcnQtc3VwcG9ydC1haS1maXJvLnZlcmNlbC5hcCQ";
 const basePath = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 if (!clerkPubKey) {
