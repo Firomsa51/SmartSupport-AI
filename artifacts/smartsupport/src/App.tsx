@@ -9,12 +9,13 @@ import {
   useClerk,
   useAuth,
 } from "@clerk/clerk-react";
-import { dark } from "@clerk/themes"; // ✅ FIX 2: correct theme import
+import { dark } from "@clerk/themes";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { queryClient } from "@/lib/queryClient";
 import { useEffect, useRef, Component, ReactNode } from "react";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -36,7 +37,6 @@ function stripBase(path: string): string {
     : path;
 }
 
-// ✅ FIX 2: use `dark` theme from @clerk/themes
 const clerkAppearance = {
   baseTheme: dark,
   cssLayerName: "clerk" as const,
@@ -76,7 +76,6 @@ const clerkAppearance = {
   },
 };
 
-// ✅ FIX 7: Global Error Boundary to prevent blank screen crashes
 interface ErrorBoundaryState { hasError: boolean; message: string }
 class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false, message: "" };
@@ -100,6 +99,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
     }
     return this.props.children;
   }
+}
+
+function ClerkAuthTokenSetter() {
+  const { getToken } = useAuth();
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+  }, [getToken]);
+  return null;
 }
 
 function ClerkQueryClientCacheInvalidator() {
@@ -128,7 +135,6 @@ function SignInPage() {
         routing="path"
         path={`${basePath}/sign-in`}
         signUpUrl={`${basePath}/sign-up`}
-        // ✅ FIX Problem A: redirect after sign-in
         forceRedirectUrl={`${basePath}/dashboard`}
       />
     </div>
@@ -142,21 +148,18 @@ function SignUpPage() {
         routing="path"
         path={`${basePath}/sign-up`}
         signInUrl={`${basePath}/sign-in`}
-        // ✅ FIX Problem A: redirect after sign-up
         forceRedirectUrl={`${basePath}/dashboard`}
       />
     </div>
   );
 }
 
-// ✅ FIX 6: loading guard prevents flash
 function HomeRedirect() {
   const { isLoaded } = useAuth();
-  if (!isLoaded) return null; // wait for Clerk to resolve auth state
+  if (!isLoaded) return null;
 
   return (
     <>
-      {/* ✅ FIX 1: SignedIn/SignedOut instead of Show */}
       <SignedIn>
         <Redirect to="/dashboard" />
       </SignedIn>
@@ -167,7 +170,6 @@ function HomeRedirect() {
   );
 }
 
-// ✅ FIX 1 + 6: correct components + loading guard
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isLoaded } = useAuth();
   if (!isLoaded) return null;
@@ -184,7 +186,6 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   );
 }
 
-// ✅ FIX 5: named wrapper components — prevents remounting on every render
 function DashboardRoute() { return <ProtectedRoute component={Dashboard} />; }
 function NewChatbotRoute() { return <ProtectedRoute component={NewChatbot} />; }
 function ChatbotDetailRoute() { return <ProtectedRoute component={ChatbotDetail} />; }
@@ -206,7 +207,6 @@ function AppRouter() {
   );
 }
 
-// ✅ FIX 3 & 4: ClerkProvider only here (not in main.tsx), using `navigate` instead of deprecated routerPush/routerReplace
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -219,6 +219,7 @@ function ClerkProviderWithRoutes() {
       navigate={(to) => setLocation(stripBase(to))}
     >
       <QueryClientProvider client={queryClient}>
+        <ClerkAuthTokenSetter />
         <ClerkQueryClientCacheInvalidator />
         <TooltipProvider>
           <ErrorBoundary>
