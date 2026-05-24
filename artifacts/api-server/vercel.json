@@ -1,5 +1,16 @@
 {
   "version": 2,
   "buildCommand": "bash ./build-and-package.sh",
-  "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile"
+  "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile",
+  "functions": {
+    "api/handler.js": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/handler"
+    }
+  ]
 }
