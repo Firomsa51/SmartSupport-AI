@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e
 
-# Push database schema to create tables
-cd ../..
-node_modules/.bin/drizzle-kit push --config=lib/db/drizzle.config.ts
-cd artifacts/api-server
-
 # Build the serverless handler
 node ./build-vercel.mjs
 mkdir -p /vercel/output/functions/api/handler.func
