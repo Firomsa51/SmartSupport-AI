@@ -24,7 +24,7 @@ import ChatbotDetail from "@/pages/chatbots/detail";
 import EmbedPage from "@/pages/chatbots/embed";
 import WidgetPage from "@/pages/widget";
 
-const clerkPubKey = "pk_live_Y2xlcmsuc21hcnQtc3VwcG9ydC1haS1maXJvLnZlcmNlbC5hcCQ";
+const clerkPubKey = "pk_test_aGVhbHRoeS1zcG9uZ2UtODcuY2xlcmsuYWNjb3VudHMuZGV2JA";
 const basePath = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 function stripBase(path: string): string {
