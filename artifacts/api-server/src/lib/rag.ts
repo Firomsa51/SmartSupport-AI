@@ -1,13 +1,8 @@
-import OpenAI from "openai";
-import { Groq } from "groq-sdk"; // Groq SDK itti dabalaniiru
+import { Groq } from "groq-sdk";
 import { db, documentChunksTable, documentsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
-// OpenAI Embeddings qofaaf tajaajila
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Groq Chat Completion (Llama 3) qofaaf tajaajila
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const CHUNK_SIZE = 800;
@@ -38,23 +33,10 @@ export async function embedAndStoreDocument(
 
     const chunks = chunkText(content);
 
-    // OpenAI embeddings (kun akkuma jirutti itti fufa)
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: chunks,
-    });
-
-    const values = chunks.map((chunk, i) => ({
-      documentId,
-      chatbotId,
-      content: chunk,
-      embedding: embeddingResponse.data[i].embedding as unknown as string,
-    }));
-
-    for (const val of values) {
+    for (const chunk of chunks) {
       await db.execute(sql`
-        INSERT INTO document_chunks (document_id, chatbot_id, content, embedding)
-        VALUES (${val.documentId}, ${val.chatbotId}, ${val.content}, ${JSON.stringify(val.embedding)}::vector)
+        INSERT INTO document_chunks (document_id, chatbot_id, content)
+        VALUES (${documentId}, ${chatbotId}, ${chunk})
       `);
     }
 
@@ -77,23 +59,28 @@ export async function getRelevantContext(
   topK = 5
 ): Promise<string> {
   try {
-    const queryEmbedding = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: [query],
-    });
-    const embeddingVector = queryEmbedding.data[0].embedding;
-
+    // Use simple text search instead of vector similarity
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    
     const rows = await db.execute(sql`
-      SELECT content, 1 - (embedding <=> ${JSON.stringify(embeddingVector)}::vector) AS similarity
+      SELECT content
       FROM document_chunks
       WHERE chatbot_id = ${chatbotId}
-      ORDER BY embedding <=> ${JSON.stringify(embeddingVector)}::vector
+      AND (${sql.join(words.map(w => sql`LOWER(content) LIKE ${'%' + w + '%'}`), sql` OR `)})
       LIMIT ${topK}
     `);
 
-    const chunks = (rows.rows as { content: string; similarity: number }[])
-      .filter((r) => r.similarity > 0.5)
-      .map((r) => r.content);
+    const chunks = (rows.rows as { content: string }[]).map((r) => r.content);
+
+    if (chunks.length === 0) {
+      // If no keyword match, return first chunks
+      const fallback = await db.execute(sql`
+        SELECT content FROM document_chunks
+        WHERE chatbot_id = ${chatbotId}
+        LIMIT ${topK}
+      `);
+      return (fallback.rows as { content: string }[]).map(r => r.content).join("\n\n---\n\n");
+    }
 
     return chunks.join("\n\n---\n\n");
   } catch (err) {
@@ -102,7 +89,6 @@ export async function getRelevantContext(
   }
 }
 
-// ------ ASIRAATI GROQ JIJJIIRRAMEERA ------
 export async function generateAIResponse(
   systemPrompt: string | null,
   context: string,
@@ -121,7 +107,6 @@ export async function generateAIResponse(
   ];
 
   try {
-    // OpenAI irraa gara Groq tti jijjiirameera, moodelli Llama 3.3 tajaajila
     const response = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages,
