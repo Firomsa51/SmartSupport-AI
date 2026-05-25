@@ -1,9 +1,14 @@
 import OpenAI from "openai";
+import { Groq } from "groq-sdk"; // Groq SDK itti dabalaniiru
 import { db, documentChunksTable, documentsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
+// OpenAI Embeddings qofaaf tajaajila
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Groq Chat Completion (Llama 3) qofaaf tajaajila
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 100;
@@ -33,6 +38,7 @@ export async function embedAndStoreDocument(
 
     const chunks = chunkText(content);
 
+    // OpenAI embeddings (kun akkuma jirutti itti fufa)
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: chunks,
@@ -96,6 +102,7 @@ export async function getRelevantContext(
   }
 }
 
+// ------ ASIRAATI GROQ JIJJIIRRAMEERA ------
 export async function generateAIResponse(
   systemPrompt: string | null,
   context: string,
@@ -113,12 +120,18 @@ export async function generateAIResponse(
     { role: "user", content: userMessage },
   ];
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages,
-    max_tokens: 600,
-    temperature: 0.3,
-  });
+  try {
+    // OpenAI irraa gara Groq tti jijjiirameera, moodelli Llama 3.3 tajaajila
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages,
+      max_tokens: 600,
+      temperature: 0.3,
+    });
 
-  return response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
+    return response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
+  } catch (err) {
+    logger.error({ err }, "Groq generation failed");
+    return "I'm sorry, I encountered an error processing your request.";
+  }
 }
