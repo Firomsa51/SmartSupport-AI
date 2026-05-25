@@ -1,12 +1,42 @@
 import { Groq } from "groq-sdk";
 import { db, documentChunksTable, documentsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { migrate } from "drizzle-orm/postgres-js/migrator"; // Kana dabalreera
 import { logger } from "./logger";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 100;
+
+// Eegumsa Database: Taableen yoo uumamuu baate ofumaan akka uumu
+async function ensureTablesExist() {
+  try {
+    // Kallattiin taableen uumamuu isaa qorachuu fi uumuu
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS documents (
+        id SERIAL PRIMARY KEY,
+        chatbot_id INTEGER,
+        status TEXT DEFAULT 'pending',
+        chunk_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS document_chunks (
+        id SERIAL PRIMARY KEY,
+        document_id INTEGER,
+        chatbot_id INTEGER,
+        content TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    logger.info("Database tables verified/created successfully.");
+  } catch (err) {
+    logger.error({ err }, "Database auto-creation failed");
+  }
+}
 
 function chunkText(text: string): string[] {
   const chunks: string[] = [];
@@ -26,7 +56,10 @@ export async function embedAndStoreDocument(
   content: string
 ): Promise<void> {
   try {
-    // 1. Status gara 'processing' tti jijjiiri
+    // 1. Dursa taableen jiraachuu isaa mirkaneessi
+    await ensureTablesExist();
+
+    // 2. Status gara 'processing' tti jijjiiri
     await db
       .update(documentsTable)
       .set({ status: "processing" })
@@ -34,7 +67,7 @@ export async function embedAndStoreDocument(
 
     const chunks = chunkText(content);
 
-    // 2. Drizzle ORM sirrii fayyadamnee chunks database keessa galchuuf
+    // 3. Chunks database keessa galchi
     for (const chunk of chunks) {
       await db.insert(documentChunksTable).values({
         documentId: documentId,
@@ -43,7 +76,7 @@ export async function embedAndStoreDocument(
       });
     }
 
-    // 3. Status gara 'ready' tti jijjiiri
+    // 4. Status gara 'ready' tti jijjiiri
     await db
       .update(documentsTable)
       .set({ status: "ready", chunkCount: chunks.length })
@@ -53,7 +86,6 @@ export async function embedAndStoreDocument(
   } catch (err) {
     logger.error({ err, documentId }, "Failed to store document");
     
-    // Dogoggorri yoo uumame status 'error' godhi
     await db
       .update(documentsTable)
       .set({ status: "error" })
@@ -67,6 +99,8 @@ export async function getRelevantContext(
   topK = 5
 ): Promise<string> {
   try {
+    await ensureTablesExist(); // Iddoo kanas eegi
+
     const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     
     if (words.length === 0) {
@@ -78,7 +112,6 @@ export async function getRelevantContext(
       return fallback.map(r => r.content).join("\n\n---\n\n");
     }
 
-    // Keyword search Drizzle ORM kanaan
     const rows = await db
       .select({ content: documentChunksTable.content })
       .from(documentChunksTable)
