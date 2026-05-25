@@ -26,6 +26,7 @@ export async function embedAndStoreDocument(
   content: string
 ): Promise<void> {
   try {
+    // 1. Status gara 'processing' tti jijjiiri
     await db
       .update(documentsTable)
       .set({ status: "processing" })
@@ -33,19 +34,26 @@ export async function embedAndStoreDocument(
 
     const chunks = chunkText(content);
 
+    // 2. Drizzle ORM sirrii fayyadamnee chunks database keessa galchuuf
     for (const chunk of chunks) {
-      await db.execute(sql`
-        INSERT INTO document_chunks (document_id, chatbot_id, content)
-        VALUES (${documentId}, ${chatbotId}, ${chunk})
-      `);
+      await db.insert(documentChunksTable).values({
+        documentId: documentId,
+        chatbotId: chatbotId,
+        content: chunk,
+      });
     }
 
+    // 3. Status gara 'ready' tti jijjiiri
     await db
       .update(documentsTable)
       .set({ status: "ready", chunkCount: chunks.length })
       .where(eq(documentsTable.id, documentId));
+
+    logger.info({ documentId, chunksCount: chunks.length }, "Document stored successfully");
   } catch (err) {
-    logger.error({ err, documentId }, "Failed to embed document");
+    logger.error({ err, documentId }, "Failed to store document");
+    
+    // Dogoggorri yoo uumame status 'error' godhi
     await db
       .update(documentsTable)
       .set({ status: "error" })
@@ -59,30 +67,39 @@ export async function getRelevantContext(
   topK = 5
 ): Promise<string> {
   try {
-    // Use simple text search instead of vector similarity
     const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     
-    const rows = await db.execute(sql`
-      SELECT content
-      FROM document_chunks
-      WHERE chatbot_id = ${chatbotId}
-      AND (${sql.join(words.map(w => sql`LOWER(content) LIKE ${'%' + w + '%'}`), sql` OR `)})
-      LIMIT ${topK}
-    `);
-
-    const chunks = (rows.rows as { content: string }[]).map((r) => r.content);
-
-    if (chunks.length === 0) {
-      // If no keyword match, return first chunks
-      const fallback = await db.execute(sql`
-        SELECT content FROM document_chunks
-        WHERE chatbot_id = ${chatbotId}
-        LIMIT ${topK}
-      `);
-      return (fallback.rows as { content: string }[]).map(r => r.content).join("\n\n---\n\n");
+    if (words.length === 0) {
+      const fallback = await db
+        .select({ content: documentChunksTable.content })
+        .from(documentChunksTable)
+        .where(eq(documentChunksTable.chatbotId, chatbotId))
+        .limit(topK);
+      return fallback.map(r => r.content).join("\n\n---\n\n");
     }
 
-    return chunks.join("\n\n---\n\n");
+    // Keyword search Drizzle ORM kanaan
+    const rows = await db
+      .select({ content: documentChunksTable.content })
+      .from(documentChunksTable)
+      .where(
+        sql`${documentChunksTable.chatbotId} = ${chatbotId} AND (${sql.join(
+          words.map(w => sql`LOWER(${documentChunksTable.content}) LIKE ${'%' + w + '%'}`),
+          sql` OR `
+        )})`
+      )
+      .limit(topK);
+
+    if (rows.length === 0) {
+      const fallback = await db
+        .select({ content: documentChunksTable.content })
+        .from(documentChunksTable)
+        .where(eq(documentChunksTable.chatbotId, chatbotId))
+        .limit(topK);
+      return fallback.map(r => r.content).join("\n\n---\n\n");
+    }
+
+    return rows.map((r) => r.content).join("\n\n---\n\n");
   } catch (err) {
     logger.error({ err }, "Failed to get relevant context");
     return "";
