@@ -30,12 +30,12 @@ import { toast } from "sonner";
 import AppShell from "@/components/app-shell";
 import CrawlSiteDialog from "@/components/crawl-site-dialog";
 
-// Upgraded schema to prevent mobile/URL formatting bugs
+// Maximum loose validation to avoid any mobile submission blocks
 const docSchema = z.object({
-  title: z.string().min(1, "Title is required").max(200).transform(s => s.trim()),
-  sourceType: z.enum(["text", "url"]),
-  content: z.string().min(1, "Content is required").max(50000).transform(s => s.trim()),
-  sourceUrl: z.string().optional().transform(s => s?.trim()),
+  title: z.string().min(1, "Title is required"),
+  sourceType: z.string(),
+  content: z.string().min(1, "Content is required"),
+  sourceUrl: z.string().optional(),
 });
 
 type DocForm = z.infer<typeof docSchema>;
@@ -82,7 +82,7 @@ export default function ChatbotDetail() {
     query: { enabled: chatbotId > 0, queryKey: getListConversationsQueryKey(chatbotId) },
   });
   const { data: analytics } = useGetChatbotAnalytics(chatbotId, {
-    query: { enabled: chatbotId > 0, queryKey: getGetChatbotAnalyticsQueryKey(chatbotId) },
+    query: { enabled: chatbotId > 0, queryKey: getListConversationsQueryKey(chatbotId) },
   });
 
   const addDocument = useAddDocument();
@@ -102,7 +102,7 @@ export default function ChatbotDetail() {
 
   const sourceType = docForm.watch("sourceType");
 
-  const handleSourceTypeChange = useCallback((newType: "text" | "url") => {
+  const handleSourceTypeChange = useCallback((newType: string) => {
     docForm.setValue("sourceType", newType);
     if (newType === "text") {
       docForm.setValue("sourceUrl", "");
@@ -138,22 +138,28 @@ export default function ChatbotDetail() {
   }, [scrapeInput, chatbotId, scrapeUrl, docForm]);
 
   const handleAddDoc = useCallback((data: DocForm) => {
+    // Force set sourceUrl to undefined if empty, preventing backend payload mismatch
+    const payload: any = {
+      title: data.title.trim(),
+      sourceType: data.sourceType,
+      content: data.content.trim(),
+    };
+    
+    if (data.sourceType === "url" && data.sourceUrl && data.sourceUrl.trim() !== "") {
+      payload.sourceUrl = data.sourceUrl.trim();
+    }
+
     addDocument.mutate(
       {
         id: chatbotId,
-        data: {
-          title: data.title,
-          sourceType: data.sourceType,
-          content: data.content,
-          sourceUrl: data.sourceUrl || "",
-        },
+        data: payload,
       },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey(chatbotId) });
           queryClient.invalidateQueries({ queryKey: getGetChatbotQueryKey(chatbotId) });
-          toast.success("Document added – embedding in progress");
-          docForm.reset();
+          toast.success("Document added successfully!");
+          docForm.reset({ title: "", sourceType: "text", content: "", sourceUrl: "" });
           setShowDocForm(false);
           setScrapeInput("");
         },
@@ -334,111 +340,106 @@ export default function ChatbotDetail() {
                 <h3 className="font-medium mb-4 text-sm">Add document</h3>
                 <Form {...docForm}>
                   <form onSubmit={docForm.handleSubmit(handleAddDoc)} className="space-y-4">
-                    <fieldset disabled={addDocument.isPending} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={docForm.control}
-                          name="title"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs">Title</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g. Refund Policy" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={docForm.control}
-                          name="sourceType"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs">Source type</FormLabel>
-                              <Select
-                                onValueChange={(val) => {
-                                  field.onChange(val);
-                                  handleSourceTypeChange(val as "text" | "url");
-                                }}
-                                defaultValue={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="text">
-                                    <span className="flex items-center gap-2"><AlignLeft className="w-3.5 h-3.5" />Plain text</span>
-                                  </SelectItem>
-                                  <SelectItem value="url">
-                                    <span className="flex items-center gap-2"><Globe className="w-3.5 h-3.5" />URL / webpage</span>
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      {sourceType === "url" && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-medium text-foreground">URL to scrape</p>
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="https://yoursite.com/docs/faq"
-                              value={scrapeInput}
-                              onChange={(e) => setScrapeInput(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleFetchUrl(); } }}
-                              className="flex-1"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={handleFetchUrl}
-                              disabled={!scrapeInput.trim() || scrapeUrl.isPending}
-                              className="gap-1.5 whitespace-nowrap"
-                            >
-                              {scrapeUrl.isPending ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Download className="w-3.5 h-3.5" />
-                              )}
-                              {scrapeUrl.isPending ? "Fetching…" : "Fetch content"}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={docForm.control}
-                        name="content"
+                        name="title"
                         render={({ field }) => (
                           <FormItem>
-                            <div className="flex items-center justify-between mb-1">
-                              <FormLabel className="text-xs">Content</FormLabel>
-                            </div>
+                            <FormLabel className="text-xs">Title</FormLabel>
                             <FormControl>
-                              <Textarea
-                                placeholder="Paste your text content here..."
-                                className="resize-none h-36 font-mono text-xs"
-                                {...field}
-                              />
+                              <Input placeholder="e.g. Refund Policy" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
+                      <FormField
+                        control={docForm.control}
+                        name="sourceType"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Source type</FormLabel>
+                            <Select
+                              onValueChange={(val) => {
+                                field.onChange(val);
+                                handleSourceTypeChange(val);
+                              }}
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="text">
+                                  <span className="flex items-center gap-2"><AlignLeft className="w-3.5 h-3.5" />Plain text</span>
+                                </SelectItem>
+                                <SelectItem value="url">
+                                  <span className="flex items-center gap-2"><Globe className="w-3.5 h-3.5" />URL / webpage</span>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                      <div className="flex gap-2">
-                        <Button type="submit" size="sm" disabled={addDocument.isPending}>
-                          {addDocument.isPending ? "Adding..." : "Add & embed"}
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setShowDocForm(false)}>Cancel</Button>
+                    {sourceType === "url" && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-foreground">URL to scrape</p>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="https://yoursite.com/docs/faq"
+                            value={scrapeInput}
+                            onChange={(e) => setScrapeInput(e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleFetchUrl}
+                            disabled={!scrapeInput.trim() || scrapeUrl.isPending}
+                            className="gap-1.5 whitespace-nowrap"
+                          >
+                            {scrapeUrl.isPending ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                            {scrapeUrl.isPending ? "Fetching…" : "Fetch content"}
+                          </Button>
+                        </div>
                       </div>
-                    </fieldset>
+                    )}
+
+                    <FormField
+                      control={docForm.control}
+                      name="content"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Content *</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              placeholder="Paste your text content here..."
+                              className="resize-none h-36 font-mono text-xs"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="flex gap-2">
+                      <Button type="submit" size="sm" disabled={addDocument.isPending}>
+                        {addDocument.isPending ? "Adding..." : "Add & embed"}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setShowDocForm(false)}>Cancel</Button>
+                    </div>
                   </form>
                 </Form>
               </div>
@@ -541,9 +542,9 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
   const updateChatbot = useUpdateChatbot();
 
   const schema = z.object({
-    name: z.string().min(1, "Name is required").max(80).transform(s => s.trim()),
-    description: z.string().max(500).optional().transform(s => s?.trim()),
-    welcomeMessage: z.string().max(300).optional().transform(s => s?.trim()),
+    name: z.string().min(1, "Name is required").max(80),
+    description: z.string().max(500).optional(),
+    welcomeMessage: z.string().max(300).optional(),
     systemPrompt: z.string().max(5000).optional(),
     primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   });
@@ -626,7 +627,7 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
                     <Textarea
                       className="resize-none h-28 font-mono text-xs"
                       placeholder="You are a helpful customer support assistant..."
-                      ...{...field}
+                      {...field}
                     />
                   </FormControl>
                   <FormMessage />
