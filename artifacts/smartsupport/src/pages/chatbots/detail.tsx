@@ -30,38 +30,16 @@ import { toast } from "sonner";
 import AppShell from "@/components/app-shell";
 import CrawlSiteDialog from "@/components/crawl-site-dialog";
 
-// ----------------------------------------------------------------------
-// Schema for document form (upgraded validation)
-// ----------------------------------------------------------------------
+// Upgraded schema to prevent mobile/URL formatting bugs
 const docSchema = z.object({
-  title: z.string()
-    .min(1, "Title is required")
-    .max(200, "Title must be 200 characters or less")
-    .transform(s => s.trim()),
+  title: z.string().min(1, "Title is required").max(200).transform(s => s.trim()),
   sourceType: z.enum(["text", "url"]),
-  content: z.string()
-    .min(1, "Content is required")
-    .max(50000, "Content is too long (max 50,000 characters)")
-    .transform(s => s.trim()),
-  sourceUrl: z.string()
-    .url("Must be a valid URL")
-    .optional()
-    .transform(s => s?.trim()),
-}).refine(data => {
-  if (data.sourceType === "url" && !data.sourceUrl) {
-    return false;
-  }
-  return true;
-}, {
-  message: "URL is required when source type is URL",
-  path: ["sourceUrl"],
+  content: z.string().min(1, "Content is required").max(50000).transform(s => s.trim()),
+  sourceUrl: z.string().optional().transform(s => s?.trim()),
 });
 
 type DocForm = z.infer<typeof docSchema>;
 
-// ----------------------------------------------------------------------
-// Document status helpers (memoized)
-// ----------------------------------------------------------------------
 const getDocStatusIcon = (status: string): React.ReactNode => {
   switch (status) {
     case "ready": return <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />;
@@ -82,9 +60,6 @@ const getDocStatusClass = (status: string): string => {
   }
 };
 
-// ----------------------------------------------------------------------
-// Main Component
-// ----------------------------------------------------------------------
 export default function ChatbotDetail() {
   const { id } = useParams<{ id: string }>();
   const chatbotId = (() => {
@@ -97,9 +72,6 @@ export default function ChatbotDetail() {
   const [showCrawlDialog, setShowCrawlDialog] = useState(false);
   const [scrapeInput, setScrapeInput] = useState("");
 
-  // --------------------------------------------------------------------
-  // Data fetching
-  // --------------------------------------------------------------------
   const { data: bot, isLoading: botLoading } = useGetChatbot(chatbotId, {
     query: { enabled: chatbotId > 0, queryKey: getGetChatbotQueryKey(chatbotId) },
   });
@@ -113,9 +85,6 @@ export default function ChatbotDetail() {
     query: { enabled: chatbotId > 0, queryKey: getGetChatbotAnalyticsQueryKey(chatbotId) },
   });
 
-  // --------------------------------------------------------------------
-  // Mutations
-  // --------------------------------------------------------------------
   const addDocument = useAddDocument();
   const deleteDocument = useDeleteDocument();
   const updateChatbot = useUpdateChatbot();
@@ -129,12 +98,10 @@ export default function ChatbotDetail() {
       content: "",
       sourceUrl: "",
     },
-    mode: "onChange",
   });
 
   const sourceType = docForm.watch("sourceType");
 
-  // Reset content and title when switching from URL to text? Not required but UX-friendly
   const handleSourceTypeChange = useCallback((newType: "text" | "url") => {
     docForm.setValue("sourceType", newType);
     if (newType === "text") {
@@ -144,15 +111,10 @@ export default function ChatbotDetail() {
     }
   }, [docForm]);
 
-  // Fetch URL content with better error handling
   const handleFetchUrl = useCallback(async () => {
     const url = scrapeInput.trim();
     if (!url) {
       toast.error("Please enter a URL");
-      return;
-    }
-    if (!url.startsWith("http")) {
-      toast.error("URL must start with http:// or https://");
       return;
     }
     scrapeUrl.mutate(
@@ -160,23 +122,21 @@ export default function ChatbotDetail() {
       {
         onSuccess: (result) => {
           if (!result.title || !result.content) {
-            toast.warning("Page fetched but no readable content found. Please paste manually.");
+            toast.warning("Page fetched but no readable content found.");
           } else {
             docForm.setValue("title", result.title.trim() || "Untitled", { shouldValidate: true });
             docForm.setValue("content", result.content, { shouldValidate: true });
             docForm.setValue("sourceUrl", result.url, { shouldValidate: true });
-            toast.success("Page content fetched – review and adjust if needed");
+            toast.success("Page content fetched successfully!");
           }
         },
         onError: (err: any) => {
-          const msg = err?.response?.data?.message || err?.message || "Could not fetch URL. Try pasting content manually.";
-          toast.error(msg);
+          toast.error(err?.response?.data?.message || "Could not fetch URL. Paste manually.");
         },
       }
     );
   }, [scrapeInput, chatbotId, scrapeUrl, docForm]);
 
-  // Add document
   const handleAddDoc = useCallback((data: DocForm) => {
     addDocument.mutate(
       {
@@ -185,7 +145,7 @@ export default function ChatbotDetail() {
           title: data.title,
           sourceType: data.sourceType,
           content: data.content,
-          sourceUrl: data.sourceUrl,
+          sourceUrl: data.sourceUrl || "",
         },
       },
       {
@@ -198,16 +158,14 @@ export default function ChatbotDetail() {
           setScrapeInput("");
         },
         onError: (err: any) => {
-          const msg = err?.response?.data?.message || "Failed to add document";
-          toast.error(msg);
+          toast.error(err?.response?.data?.message || "Failed to add document");
         },
       }
     );
   }, [addDocument, chatbotId, queryClient, docForm]);
 
-  // Delete document with confirmation
   const handleDeleteDoc = useCallback((docId: number, docTitle: string) => {
-    if (!confirm(`Delete document "${docTitle}"? This action cannot be undone.`)) return;
+    if (!confirm(`Delete document "${docTitle}"?`)) return;
     deleteDocument.mutate(
       { id: chatbotId, docId },
       {
@@ -221,7 +179,6 @@ export default function ChatbotDetail() {
     );
   }, [deleteDocument, chatbotId, queryClient]);
 
-  // Toggle chatbot active status
   const handleToggleStatus = useCallback(() => {
     if (!bot) return;
     const newStatus = bot.status === "active" ? "inactive" : "active";
@@ -237,9 +194,6 @@ export default function ChatbotDetail() {
     );
   }, [bot, chatbotId, updateChatbot, queryClient]);
 
-  // --------------------------------------------------------------------
-  // Loading & Error states
-  // --------------------------------------------------------------------
   if (chatbotId === 0) {
     return (
       <AppShell>
@@ -273,16 +227,13 @@ export default function ChatbotDetail() {
     );
   }
 
-  // --------------------------------------------------------------------
-  // Render
-  // --------------------------------------------------------------------
   return (
     <AppShell>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div>
           <Link href="/dashboard">
-            <Button variant="ghost" size="sm" className="gap-2 mb-4 -ml-2 text-muted-foreground" aria-label="Go back to dashboard">
+            <Button variant="ghost" size="sm" className="gap-2 mb-4 -ml-2 text-muted-foreground">
               <ArrowLeft className="w-4 h-4" />
               Dashboard
             </Button>
@@ -318,8 +269,6 @@ export default function ChatbotDetail() {
                 size="sm"
                 onClick={handleToggleStatus}
                 disabled={updateChatbot.isPending}
-                data-testid="button-toggle-status"
-                aria-label={bot.status === "active" ? "Deactivate chatbot" : "Activate chatbot"}
               >
                 {bot.status === "active" ? "Deactivate" : "Activate"}
               </Button>
@@ -329,7 +278,7 @@ export default function ChatbotDetail() {
 
         {/* Tabs */}
         <Tabs defaultValue="knowledge">
-          <TabsList className="bg-card border border-border" aria-label="Chatbot sections">
+          <TabsList className="bg-card border border-border">
             <TabsTrigger value="knowledge" className="gap-2 text-xs">
               <FileText className="w-3.5 h-3.5" />
               Knowledge Base ({docs?.length ?? 0})
@@ -358,7 +307,6 @@ export default function ChatbotDetail() {
                   variant="outline"
                   className="gap-2"
                   onClick={() => setShowCrawlDialog(true)}
-                  data-testid="button-crawl-site"
                 >
                   <Globe className="w-3.5 h-3.5" />
                   Crawl website
@@ -367,7 +315,6 @@ export default function ChatbotDetail() {
                   size="sm"
                   className="gap-2"
                   onClick={() => setShowDocForm(!showDocForm)}
-                  data-testid="button-add-document"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Add document
@@ -396,9 +343,8 @@ export default function ChatbotDetail() {
                             <FormItem>
                               <FormLabel className="text-xs">Title</FormLabel>
                               <FormControl>
-                                <Input placeholder="e.g. Refund Policy" data-testid="input-doc-title" {...field} />
+                                <Input placeholder="e.g. Refund Policy" {...field} />
                               </FormControl>
-                              <FormDescription className="text-xs">Max 200 characters</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -417,7 +363,7 @@ export default function ChatbotDetail() {
                                 defaultValue={field.value}
                               >
                                 <FormControl>
-                                  <SelectTrigger data-testid="select-source-type">
+                                  <SelectTrigger>
                                     <SelectValue />
                                   </SelectTrigger>
                                 </FormControl>
@@ -445,7 +391,6 @@ export default function ChatbotDetail() {
                               value={scrapeInput}
                               onChange={(e) => setScrapeInput(e.target.value)}
                               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleFetchUrl(); } }}
-                              data-testid="input-source-url"
                               className="flex-1"
                             />
                             <Button
@@ -455,7 +400,6 @@ export default function ChatbotDetail() {
                               onClick={handleFetchUrl}
                               disabled={!scrapeInput.trim() || scrapeUrl.isPending}
                               className="gap-1.5 whitespace-nowrap"
-                              data-testid="button-fetch-url"
                             >
                               {scrapeUrl.isPending ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -465,9 +409,6 @@ export default function ChatbotDetail() {
                               {scrapeUrl.isPending ? "Fetching…" : "Fetch content"}
                             </Button>
                           </div>
-                          <FormDescription className="text-xs">
-                            Click "Fetch content" to automatically extract text from the page. Works best with documentation and blog posts.
-                          </FormDescription>
                         </div>
                       )}
 
@@ -477,24 +418,12 @@ export default function ChatbotDetail() {
                         render={({ field }) => (
                           <FormItem>
                             <div className="flex items-center justify-between mb-1">
-                              <FormLabel className="text-xs">
-                                {sourceType === "url" ? "Extracted content" : "Content"}
-                              </FormLabel>
-                              {field.value && (
-                                <span className="text-xs text-muted-foreground">
-                                  {field.value.length.toLocaleString()} / 50,000 chars
-                                </span>
-                              )}
+                              <FormLabel className="text-xs">Content</FormLabel>
                             </div>
                             <FormControl>
                               <Textarea
-                                placeholder={
-                                  sourceType === "url"
-                                    ? "Paste URL above and click Fetch, or paste content manually…"
-                                    : "Paste your documentation, FAQs, policies, etc…"
-                                }
+                                placeholder="Paste your text content here..."
                                 className="resize-none h-36 font-mono text-xs"
-                                data-testid="input-doc-content"
                                 {...field}
                               />
                             </FormControl>
@@ -504,7 +433,7 @@ export default function ChatbotDetail() {
                       />
 
                       <div className="flex gap-2">
-                        <Button type="submit" size="sm" disabled={addDocument.isPending || !docForm.formState.isValid} data-testid="button-submit-doc">
+                        <Button type="submit" size="sm" disabled={addDocument.isPending}>
                           {addDocument.isPending ? "Adding..." : "Add & embed"}
                         </Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => setShowDocForm(false)}>Cancel</Button>
@@ -529,7 +458,7 @@ export default function ChatbotDetail() {
             ) : (
               <div className="space-y-2">
                 {docs?.map((doc) => (
-                  <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3" data-testid={`row-doc-${doc.id}`}>
+                  <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
                     {getDocStatusIcon(doc.status)}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{doc.title}</p>
@@ -542,8 +471,6 @@ export default function ChatbotDetail() {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleDeleteDoc(doc.id, doc.title)}
-                      data-testid={`button-delete-doc-${doc.id}`}
-                      aria-label={`Delete document ${doc.title}`}
                     >
                       <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                     </Button>
@@ -564,7 +491,7 @@ export default function ChatbotDetail() {
             ) : (
               <div className="space-y-2">
                 {conversations?.map((conv) => (
-                  <div key={conv.id} className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3" data-testid={`row-conv-${conv.id}`}>
+                  <div key={conv.id} className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
                     <MessageSquare className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-mono truncate text-muted-foreground">{conv.sessionId}</p>
@@ -609,9 +536,6 @@ export default function ChatbotDetail() {
   );
 }
 
-// ----------------------------------------------------------------------
-// Settings Panel Component (improved validation)
-// ----------------------------------------------------------------------
 function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
   const queryClient = useQueryClient();
   const updateChatbot = useUpdateChatbot();
@@ -620,8 +544,8 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
     name: z.string().min(1, "Name is required").max(80).transform(s => s.trim()),
     description: z.string().max(500).optional().transform(s => s?.trim()),
     welcomeMessage: z.string().max(300).optional().transform(s => s?.trim()),
-    systemPrompt: z.string().max(5000, "System prompt cannot exceed 5000 characters").optional(),
-    primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex color (e.g. #2563eb)").optional(),
+    systemPrompt: z.string().max(5000).optional(),
+    primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   });
 
   const form = useForm({
@@ -633,7 +557,6 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
       systemPrompt: bot.systemPrompt ?? "",
       primaryColor: bot.primaryColor ?? "#2563eb",
     },
-    mode: "onChange",
   });
 
   const systemPromptValue = form.watch("systemPrompt") || "";
@@ -663,7 +586,7 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Name *</FormLabel>
-                  <FormControl><Input data-testid="input-settings-name" {...field} /></FormControl>
+                  <FormControl><Input {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -674,7 +597,7 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Description</FormLabel>
-                  <FormControl><Textarea className="resize-none h-20" data-testid="input-settings-description" {...field} /></FormControl>
+                  <FormControl><Textarea className="resize-none h-20" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -685,7 +608,7 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Welcome message</FormLabel>
-                  <FormControl><Input data-testid="input-settings-welcome" {...field} /></FormControl>
+                  <FormControl><Input {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -702,17 +625,15 @@ function SettingsPanel({ bot, chatbotId }: { bot: any; chatbotId: number }) {
                   <FormControl>
                     <Textarea
                       className="resize-none h-28 font-mono text-xs"
-                      placeholder="You are a helpful customer support assistant for Acme Inc..."
-                      data-testid="input-settings-prompt"
-                      {...field}
+                      placeholder="You are a helpful customer support assistant..."
+                      ...{...field}
                     />
                   </FormControl>
-                  <FormDescription className="text-xs">Instructions that define the chatbot's behavior.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button type="submit" disabled={updateChatbot.isPending || !form.formState.isValid} data-testid="button-save-settings">
+            <Button type="submit" disabled={updateChatbot.isPending}>
               {updateChatbot.isPending ? "Saving..." : "Save changes"}
             </Button>
           </fieldset>
