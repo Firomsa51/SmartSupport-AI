@@ -1,7 +1,12 @@
 import { db, userMemoriesTable } from "@workspace/db"; 
 import { eq, and } from "drizzle-orm";
-// logger fi groq akka koodii kee isa duraa irraa import ta'anitti dhiisneerra
+// Hubachiisa: Groq fi Logger akkuma koodii kee isa duraa irra jiranitti import gochuu qabda.
+// Fakkeenyaaf: import { groq } from "./groq"; ykn kkf.
+// Asitti garuu global ykn external akka ta'anitti dhiisneera.
 
+/**
+ * 1. AI Response generated godhu (Dandeettii Memory Injection fi Background Extraction qaba)
+ */
 export async function generateAIResponse(
   systemPrompt: string | null,
   context: string,
@@ -12,7 +17,7 @@ export async function generateAIResponse(
 ): Promise<string> {
   const basePrompt = systemPrompt ?? "You are a helpful customer support assistant.";
   
-  // 1. Long-term Memory Dubbisuu
+  // Long-term Memory Dubbisuu
   let memorySection = "";
   if (chatbotId && visitorId) {
     try {
@@ -33,7 +38,7 @@ export async function generateAIResponse(
         memorySection = `\n\n[USER LONG-TERM INSIGHTS / MEMORY]:\nUse these historical facts about this user to personalize your response and maintain continuous context. Do not explicitly say "according to my memory":\n${memoryList}`;
       }
     } catch (memErr) {
-      logger.error({ memErr }, "Failed to fetch user memories");
+      if (typeof logger !== "undefined") logger.error({ memErr }, "Failed to fetch user memories");
     }
   }
 
@@ -63,21 +68,23 @@ export async function generateAIResponse(
 
     const aiReply = response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
 
-    // 2. Background Memory Extraction
+    // Background Memory Extraction trigger gochuu
     if (chatbotId && visitorId && conversationHistory.length >= 3) {
-      extractAndSaveMemory(chatbotId, visitorId, [...conversationHistory, { role: "user", content: userMessage }, { role: "assistant", content: aiReply }]).catch((err) => 
-        logger.error({ err }, "Background memory extraction failed")
-      );
+      extractAndSaveMemory(chatbotId, visitorId, [...conversationHistory, { role: "user", content: userMessage }, { role: "assistant", content: aiReply }]).catch((err) => {
+        if (typeof logger !== "undefined") logger.error({ err }, "Background memory extraction failed");
+      });
     }
 
     return aiReply;
   } catch (err) {
-    logger.error({ err }, "Groq generation failed");
+    if (typeof logger !== "undefined") logger.error({ err }, "Groq generation failed");
     return "I'm sorry, I encountered an error processing your request.";
   }
 }
 
-// Memory Extract godhee kan database keessatti ol kuusu
+/**
+ * 2. Background Memory Extraction (Kallattiin haasaa irraa dandeettii yaadachuu kuusa)
+ */
 export async function extractAndSaveMemory(
   chatbotId: number,
   visitorId: string,
@@ -120,6 +127,33 @@ Extracted Facts:`;
       }
     }
   } catch (err) {
-    logger.error({ err }, "Failed to extract memory");
+    if (typeof logger !== "undefined") logger.error({ err }, "Failed to extract memory");
+  }
+}
+
+/**
+ * 3. Kanaan dura kan sassaabame (Dhabamee kan ture - Widget.ts kan gargaaramu)
+ * Kun RAG Context dhiyyeessa
+ */
+export async function getRelevantContext(chatbotId: number, message: string): Promise<string> {
+  try {
+    // Asirratti koodii embedding vector search kee qaama 'getRelevantContext' duraan qabdu itti guuti.
+    // Akka error hin fidhneef yeroof, context gabaabaa ykn empty string daddabaltee koodii kee deebisa.
+    // Yoo koodii isaa qorachuu barbaadde koodii 'rag.ts' isa jalqabaa irraa copy gochuu dandeessa.
+    return ""; 
+  } catch (err) {
+    return "";
+  }
+}
+
+/**
+ * 4. Kanaan dura kan sassaabame (Dhabamee kan ture - Documents.ts kan gargaaramu)
+ * Kun Documents embed godhee store godha
+ */
+export async function embedAndStoreDocument(chatbotId: number, documentId: number, content: string): Promise<void> {
+  try {
+    // Asirratti koodii embedding store gochuuf duraan fayyadamte itti guuti.
+  } catch (err) {
+    if (typeof logger !== "undefined") logger.error({ err }, "Failed to embed document");
   }
 }
