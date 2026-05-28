@@ -1,5 +1,4 @@
-import { db } from "../db"; 
-import { userMemoriesTable } from "@smart-support-ai/db/src/schema/conversations"; 
+import { db, userMemoriesTable } from "@workspace/db"; 
 import { eq, and } from "drizzle-orm";
 // logger fi groq akka koodii kee isa duraa irraa import ta'anitti dhiisneerra
 
@@ -64,9 +63,8 @@ export async function generateAIResponse(
 
     const aiReply = response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
 
-    // 2. Background Memory Extraction (Haasaa ammaa irraa background dhaan memory extract gochuu)
+    // 2. Background Memory Extraction
     if (chatbotId && visitorId && conversationHistory.length >= 3) {
-      // Vercel irratti async ta'ee akka hojjetuuf 'await' malee asitti waamna
       extractAndSaveMemory(chatbotId, visitorId, [...conversationHistory, { role: "user", content: userMessage }, { role: "assistant", content: aiReply }]).catch((err) => 
         logger.error({ err }, "Background memory extraction failed")
       );
@@ -85,7 +83,6 @@ export async function extractAndSaveMemory(
   visitorId: string,
   history: { role: "user" | "assistant" | "system"; content: string }[]
 ): Promise<void> {
-  // Haasaa dhiheenya godhame qofa fudhanna
   const conversationText = history
     .slice(-6)
     .map((m) => `${m.role}: ${m.content}`)
@@ -103,7 +100,7 @@ Extracted Facts:`;
 
   try {
     const response = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant", // Model xiqqaa fi saffisaa memory extract gochuuf gahaadha
+      model: "llama-3.1-8b-instant", 
       messages: [{ role: "user", content: prompt }],
       temperature: 0.1,
       max_tokens: 200,
@@ -115,7 +112,6 @@ Extracted Facts:`;
       const facts = text.split("\n").filter((f) => f.trim().length > 2);
       
       for (const fact of facts) {
-        // Tabilii keenya haaraa irratti kuusuu
         await db.insert(userMemoriesTable).values({
           chatbotId,
           visitorId,
@@ -124,7 +120,6 @@ Extracted Facts:`;
       }
     }
   } catch (err) {
-    // Logger koo keessatti error galmeessi
     logger.error({ err }, "Failed to extract memory");
   }
 }
