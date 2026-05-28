@@ -8,6 +8,7 @@ export const startCrawlJob = inngest.createFunction(
   { id: "start-crawl-job", name: "Start Website Crawl" },
   { event: "crawl.start" },
   async ({ event, step }) => {
+    // Inngest v3 keessatti payload-ni sendEvent irratti 'data' keessa gala
     const { jobId, chatbotId, url } = event.data;
 
     // Status 'crawling' irratti jijjiirra
@@ -55,6 +56,7 @@ export const processPageIngestion = inngest.createFunction(
 
     await step.run("chunk-and-embed", async () => {
       // Vector processing (pgvector) asitti deema
+      // rawContent asitti chunk gootee openai embedding itti naquu dandeessa
       console.log(`Embedding updated safely for: ${pageUrl}`);
     });
 
