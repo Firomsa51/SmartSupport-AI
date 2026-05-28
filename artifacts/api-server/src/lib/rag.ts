@@ -1,24 +1,21 @@
 import { db, userMemoriesTable } from "@workspace/db"; 
 import { eq, and } from "drizzle-orm";
-import { groq } from "./groq"; // Sararri kun akka groq hojjetu taasisa
-import { logger } from "./logger"; // Sararri kun akka logger hojjetu taasisa
-
-// Koodii kee isa duraan ture (getRelevantContext fi embedAndStoreDocument) gadiitti hafeera!
-// Isaan suduudaan gadi dhiisii koodii kan gadii kanaan walitti fufi.
+import { groq } from "./groq"; 
+import { logger } from "./logger"; 
 
 export async function generateAIResponse(
   systemPrompt: string | null,
   context: string,
   conversationHistory: { role: "user" | "assistant"; content: string }[],
   userMessage: string,
-  chatbotId?: number,   
-  visitorId?: string    
+  chatbotId?: number | null,   // Akka undefined/null ta'es safe ta'uuf
+  visitorId?: string | null    // Akka undefined/null ta'es safe ta'uuf
 ): Promise<string> {
   const basePrompt = systemPrompt ?? "You are a helpful customer support assistant.";
   
-  // 1. Long-term Memory Dubbisuu
+  // 1. Long-term Memory Dubbisuu (Safe Fetching)
   let memorySection = "";
-  if (chatbotId && visitorId) {
+  if (chatbotId && visitorId && typeof chatbotId === "number" && typeof visitorId === "string") {
     try {
       const pastMemories = await db
         .select({ memoryText: userMemoriesTable.memoryText })
@@ -32,16 +29,15 @@ export async function generateAIResponse(
         .orderBy(userMemoriesTable.createdAt)
         .limit(5); 
 
-      if (pastMemories.length > 0) {
+      if (pastMemories && pastMemories.length > 0) {
         const memoryList = pastMemories.map((m) => `- ${m.memoryText}`).join("\n");
         memorySection = `\n\n[USER LONG-TERM INSIGHTS / MEMORY]:\nUse these historical facts about this user to personalize your response and maintain continuous context. Do not explicitly say "according to my memory":\n${memoryList}`;
       }
     } catch (memErr) {
-      logger.error({ memErr }, "Failed to fetch user memories");
+      logger.error({ memErr }, "Failed to fetch user memories, bypassing to avoid crash.");
     }
   }
 
-  // Seera ati ijaarite
   const greetingRule = `
 \n\nCORE BEHAVIOR RULES:
 1. GREETING DETECTION: If the user message is JUST a greeting (e.g., "Akkam", "Akkami", "Hello", "Hi", "Akkam nagaya ketti"), reply warmly in the same language.
@@ -68,15 +64,15 @@ export async function generateAIResponse(
 
     const aiReply = response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
 
-    // 2. Background Memory Extraction (Haasaa ammaa irraa background dhaan memory extract gochuu)
-    if (chatbotId && visitorId && conversationHistory.length >= 2) {
+    // 2. Safe Background Memory Extraction
+    // Serverless irratti 'await' gochuu qabna ykn block hunda try-catch keessa galchina akka inni execute ta'u
+    if (chatbotId && visitorId && typeof chatbotId === "number" && typeof visitorId === "string") {
+      // Vercel irratti function-ichi osoo hin freeze ta'in dafee akka xumuruuf safe background worker
       extractAndSaveMemory(chatbotId, visitorId, [
         ...conversationHistory, 
         { role: "user", content: userMessage }, 
         { role: "assistant", content: aiReply }
-      ]).catch((err) => 
-        logger.error({ err }, "Background memory extraction failed")
-      );
+      ]).catch((err) => logger.error({ err }, "Background memory extraction async failed"));
     }
 
     return aiReply;
@@ -86,33 +82,30 @@ export async function generateAIResponse(
   }
 }
 
-// Memory Extract godhee kan database keessatti ol kuusu
 export async function extractAndSaveMemory(
   chatbotId: number,
   visitorId: string,
   history: { role: "user" | "assistant" | "system"; content: string }[]
 ): Promise<void> {
+  // Haasaa dhumarratti dhufe qofa qabaa
   const conversationText = history
-    .slice(-6)
+    .slice(-4)
     .map((m) => `${m.role}: ${m.content}`)
     .join("\n");
 
-  const prompt = `You are an AI Memory Extraction system. Analyze the following chat history between a user and a customer support bot. 
-Extract any long-term core facts, user business preferences, user language choice, or critical context that would be useful for future chats.
-Be extremely concise. Write one clean fact per line. 
-If nothing important or new is found, reply strictly with the word "NONE".
-
-Chat History:
+  const prompt = `You are an AI Memory Extraction system. Analyze the chat history. Extract any long-term facts or preferences (e.g., name, language, business type). Be concise. One fact per line. If nothing new, write NONE.
+  
+History:
 ${conversationText}
 
-Extracted Facts:`;
+Facts:`;
 
   try {
     const response = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant", 
       messages: [{ role: "user", content: prompt }],
       temperature: 0.1,
-      max_tokens: 200,
+      max_tokens: 150,
     });
 
     const text = response.choices[0]?.message?.content?.trim();
@@ -121,17 +114,24 @@ Extracted Facts:`;
       const facts = text.split("\n").filter((f) => f.trim().length > 2);
       
       for (const fact of facts) {
-        await db.insert(userMemoriesTable).values({
-          chatbotId,
-          visitorId,
-          memoryText: fact.trim(),
-        });
+        // Database insert safe gochuu
+        try {
+          await db.insert(userMemoriesTable).values({
+            chatbotId,
+            visitorId,
+            memoryText: fact.trim(),
+          });
+        } catch (dbInsErr) {
+          logger.error({ dbInsErr }, "Failed to insert single memory row");
+        }
       }
     }
   } catch (err) {
-    logger.error({ err }, "Failed to extract memory");
+    logger.error({ err }, "Failed to extract memory from Groq");
   }
 }
 
-// Sarara kanas gadiiti function-oonni 'getRelevantContext' fi 'embedAndStoreDocument' 
-// warri ati kanaan dura ijaarite akkuma jiranitti haa turaan, hin tuqin!
+// -------------------------------------------------------------------------
+// Function-oonni kee kan gadii 'getRelevantContext' fi 'embedAndStoreDocument'
+// isaan kanaan dura turan asii gadiitti akkuma jiranitti dhiisi!
+// -------------------------------------------------------------------------
