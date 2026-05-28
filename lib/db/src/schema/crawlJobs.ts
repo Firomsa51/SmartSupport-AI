@@ -1,5 +1,5 @@
-import { pgTable, serial, integer, text, timestamp, pgEnum, customJson, index } from "drizzle-orm/pg-core";
-import { chatbots } from "./chatbots";
+import { pgTable, serial, integer, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
+import { chatbotsTable } from "./chatbots";
 
 // 1. Enum ijaaruu (Neon irratti uumne waliin tokko)
 export const crawlJobStatusEnum = pgEnum("crawl_job_status", [
@@ -17,13 +17,13 @@ export const crawlJobs = pgTable(
     id: serial("id").primaryKey(),
     chatbotId: integer("chatbot_id")
       .notNull()
-      .references(() => chatbots.id, { onDelete: "cascade" }),
+      .references(() => chatbotsTable.id, { onDelete: "cascade" }), // chatbotsTable.id jedhee sirraa'eera
     url: text("url").notNull(),
     status: crawlJobStatusEnum("status").default("pending").notNull(),
     totalPages: integer("total_pages").default(0).notNull(),
     processedPages: integer("processed_pages").default(0).notNull(),
     errorMessage: text("error_message"),
-    // JSONB columns for rich metadata
+    // JSONB columns for rich metadata (Stored as text fallback in Drizzle if needed)
     progress: text("progress").default("{}"), 
     resultMetadata: text("result_metadata").default("{}"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
