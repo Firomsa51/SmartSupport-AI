@@ -1,19 +1,25 @@
 import { db, userMemoriesTable } from "@workspace/db"; 
 import { eq, and } from "drizzle-orm";
-import { groq } from "./groq"; 
-import { logger } from "./logger"; 
+import Groq from "groq-sdk"; // Kallattiin SDK irraa import gochuu dandeessa yoo dhuunfaatti dhabame
+
+// Yoo global 'groq' jiraate isa gargaarama, yoo dhabame haaraa uuma akka inni tasuma hin kufneef
+const groqClient = typeof groq !== "undefined" ? groq : new Groq({ apiKey: process.env.GROQ_API_KEY });
+// Logger irrattis safe fallbacks dabalachuu
+const logClient = typeof logger !== "undefined" ? logger : console;
 
 export async function generateAIResponse(
   systemPrompt: string | null,
   context: string,
   conversationHistory: { role: "user" | "assistant"; content: string }[],
   userMessage: string,
-  chatbotId?: number | null,   // Akka undefined/null ta'es safe ta'uuf
-  visitorId?: string | null    // Akka undefined/null ta'es safe ta'uuf
+  options?: { chatbotId?: number | null; visitorId?: string | null }
 ): Promise<string> {
   const basePrompt = systemPrompt ?? "You are a helpful customer support assistant.";
   
-  // 1. Long-term Memory Dubbisuu (Safe Fetching)
+  const chatbotId = options?.chatbotId;
+  const visitorId = options?.visitorId;
+
+  // 1. Long-term Memory Dubbisuu
   let memorySection = "";
   if (chatbotId && visitorId && typeof chatbotId === "number" && typeof visitorId === "string") {
     try {
@@ -31,10 +37,10 @@ export async function generateAIResponse(
 
       if (pastMemories && pastMemories.length > 0) {
         const memoryList = pastMemories.map((m) => `- ${m.memoryText}`).join("\n");
-        memorySection = `\n\n[USER LONG-TERM INSIGHTS / MEMORY]:\nUse these historical facts about this user to personalize your response and maintain continuous context. Do not explicitly say "according to my memory":\n${memoryList}`;
+        memorySection = `\n\n[USER LONG-TERM INSIGHTS / MEMORY]:\nUse these historical facts about this user to personalize your response. Do not explicitly say "according to my memory":\n${memoryList}`;
       }
     } catch (memErr) {
-      logger.error({ memErr }, "Failed to fetch user memories, bypassing to avoid crash.");
+      logClient.error({ memErr }, "Failed to fetch user memories");
     }
   }
 
@@ -55,7 +61,7 @@ export async function generateAIResponse(
   ];
 
   try {
-    const response = await groq.chat.completions.create({
+    const response = await groqClient.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages,
       max_tokens: 600,
@@ -64,20 +70,18 @@ export async function generateAIResponse(
 
     const aiReply = response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
 
-    // 2. Safe Background Memory Extraction
-    // Serverless irratti 'await' gochuu qabna ykn block hunda try-catch keessa galchina akka inni execute ta'u
+    // 2. Background Memory Extraction (Safe Trigger)
     if (chatbotId && visitorId && typeof chatbotId === "number" && typeof visitorId === "string") {
-      // Vercel irratti function-ichi osoo hin freeze ta'in dafee akka xumuruuf safe background worker
       extractAndSaveMemory(chatbotId, visitorId, [
         ...conversationHistory, 
         { role: "user", content: userMessage }, 
         { role: "assistant", content: aiReply }
-      ]).catch((err) => logger.error({ err }, "Background memory extraction async failed"));
+      ]).catch((err) => logClient.error({ err }, "Background memory extraction failed"));
     }
 
     return aiReply;
   } catch (err) {
-    logger.error({ err }, "Groq generation failed");
+    logClient.error({ err }, "Groq generation failed");
     return "I'm sorry, I encountered an error processing your request.";
   }
 }
@@ -87,21 +91,20 @@ export async function extractAndSaveMemory(
   visitorId: string,
   history: { role: "user" | "assistant" | "system"; content: string }[]
 ): Promise<void> {
-  // Haasaa dhumarratti dhufe qofa qabaa
   const conversationText = history
     .slice(-4)
     .map((m) => `${m.role}: ${m.content}`)
     .join("\n");
 
-  const prompt = `You are an AI Memory Extraction system. Analyze the chat history. Extract any long-term facts or preferences (e.g., name, language, business type). Be concise. One fact per line. If nothing new, write NONE.
-  
+  const prompt = `You are an AI Memory Extraction system. Extract any long-term facts or preferences (e.g., name, language, business type). Be concise. One fact per line. If nothing new, write NONE.
+
 History:
 ${conversationText}
 
 Facts:`;
 
   try {
-    const response = await groq.chat.completions.create({
+    const response = await groqClient.chat.completions.create({
       model: "llama-3.1-8b-instant", 
       messages: [{ role: "user", content: prompt }],
       temperature: 0.1,
@@ -114,7 +117,6 @@ Facts:`;
       const facts = text.split("\n").filter((f) => f.trim().length > 2);
       
       for (const fact of facts) {
-        // Database insert safe gochuu
         try {
           await db.insert(userMemoriesTable).values({
             chatbotId,
@@ -122,16 +124,11 @@ Facts:`;
             memoryText: fact.trim(),
           });
         } catch (dbInsErr) {
-          logger.error({ dbInsErr }, "Failed to insert single memory row");
+          logClient.error({ dbInsErr }, "Failed to insert single memory row");
         }
       }
     }
   } catch (err) {
-    logger.error({ err }, "Failed to extract memory from Groq");
+    logClient.error({ err }, "Failed to extract memory");
   }
 }
-
-// -------------------------------------------------------------------------
-// Function-oonni kee kan gadii 'getRelevantContext' fi 'embedAndStoreDocument'
-// isaan kanaan dura turan asii gadiitti akkuma jiranitti dhiisi!
-// -------------------------------------------------------------------------
