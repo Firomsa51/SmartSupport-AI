@@ -2,6 +2,7 @@ import { Router } from "express";
 import { eq, count, and } from "drizzle-orm";
 import { db, chatbotsTable, documentsTable, conversationsTable } from "@workspace/db";
 import { requireAuth, getUserId } from "../lib/auth";
+import { IngestionService } from "../services/ingestion"; // 1. Ingestion service import gochuu
 import {
   CreateChatbotBody,
   UpdateChatbotBody,
@@ -178,6 +179,48 @@ router.get("/chatbots/:id/widget-script", requireAuth, async (req, res): Promise
   const embedInstructions = `Add the following script tag to the <head> or <body> of your website's HTML. The chat widget will automatically appear as a floating button in the bottom-right corner.`;
 
   res.json({ scriptTag, chatbotUid: bot.uid, embedInstructions });
+});
+
+// 2. TRIGGER CRAWL PIPELINE ENDPOINT (Modular & Secure)
+router.post("/chatbots/:id/crawl", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const chatbotId = parseInt(req.params.id, 10);
+    const { url } = req.body;
+
+    if (!url) {
+      res.status(400).json({ error: "Target URL is required for crawling." });
+      return;
+    }
+
+    if (isNaN(chatbotId)) {
+      res.status(400).json({ error: "Invalid Chatbot ID format." });
+      return;
+    }
+
+    // Abbaa chatbotichaa qofa akka ta'e mirkaneessuuf (Security Check)
+    const [bot] = await db
+      .select()
+      .from(chatbotsTable)
+      .where(and(eq(chatbotsTable.id, chatbotId), eq(chatbotsTable.userId, userId)));
+
+    if (!bot) {
+      res.status(404).json({ error: "Chatbot not found or unauthorized access." });
+      return;
+    }
+
+    // Ingestion service irraa safe trigger gochuu
+    const result = await IngestionService.triggerCrawl(chatbotId, url);
+
+    if (!result.success) {
+      res.status(409).json({ error: result.message, jobId: result.jobId });
+      return;
+    }
+
+    res.status(202).json(result); // 202 Accepted (Processing asynchronous pipeline)
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal server error during crawl triggering.", details: error.message });
+  }
 });
 
 export default router;
