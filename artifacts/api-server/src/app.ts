@@ -9,7 +9,7 @@ import {
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
-import inngestRouter from "./routes/inngest"; // 1. Inngest route import gochuu
+import inngestRouter from "./routes/inngest"; // Sararri kun sirriidha, garuu routes/index.ts keessas dabalachuu qabna ykn asii gadiitti koodii kanaan bakka buusi
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -38,10 +38,9 @@ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(cors({ credentials: true, origin: true }));
 
-// 2. Inngest Endpoint Clerk fi json() parser dura hidhuu (Braking akka hin uumamneef)
+// Inngest route call gochuu
 app.use(inngestRouter);
 
-// Kaan hundaaf body parser itti fufa
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
