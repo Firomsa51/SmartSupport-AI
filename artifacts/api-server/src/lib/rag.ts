@@ -1,12 +1,11 @@
 import { db, userMemoriesTable } from "@workspace/db"; 
 import { eq, and } from "drizzle-orm";
-// Hubachiisa: Groq fi Logger akkuma koodii kee isa duraa irra jiranitti import gochuu qabda.
-// Fakkeenyaaf: import { groq } from "./groq"; ykn kkf.
-// Asitti garuu global ykn external akka ta'anitti dhiisneera.
+import { groq } from "./groq"; // Sararri kun akka groq hojjetu taasisa
+import { logger } from "./logger"; // Sararri kun akka logger hojjetu taasisa
 
-/**
- * 1. AI Response generated godhu (Dandeettii Memory Injection fi Background Extraction qaba)
- */
+// Koodii kee isa duraan ture (getRelevantContext fi embedAndStoreDocument) gadiitti hafeera!
+// Isaan suduudaan gadi dhiisii koodii kan gadii kanaan walitti fufi.
+
 export async function generateAIResponse(
   systemPrompt: string | null,
   context: string,
@@ -17,7 +16,7 @@ export async function generateAIResponse(
 ): Promise<string> {
   const basePrompt = systemPrompt ?? "You are a helpful customer support assistant.";
   
-  // Long-term Memory Dubbisuu
+  // 1. Long-term Memory Dubbisuu
   let memorySection = "";
   if (chatbotId && visitorId) {
     try {
@@ -38,10 +37,11 @@ export async function generateAIResponse(
         memorySection = `\n\n[USER LONG-TERM INSIGHTS / MEMORY]:\nUse these historical facts about this user to personalize your response and maintain continuous context. Do not explicitly say "according to my memory":\n${memoryList}`;
       }
     } catch (memErr) {
-      if (typeof logger !== "undefined") logger.error({ memErr }, "Failed to fetch user memories");
+      logger.error({ memErr }, "Failed to fetch user memories");
     }
   }
 
+  // Seera ati ijaarite
   const greetingRule = `
 \n\nCORE BEHAVIOR RULES:
 1. GREETING DETECTION: If the user message is JUST a greeting (e.g., "Akkam", "Akkami", "Hello", "Hi", "Akkam nagaya ketti"), reply warmly in the same language.
@@ -68,23 +68,25 @@ export async function generateAIResponse(
 
     const aiReply = response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
 
-    // Background Memory Extraction trigger gochuu
-    if (chatbotId && visitorId && conversationHistory.length >= 3) {
-      extractAndSaveMemory(chatbotId, visitorId, [...conversationHistory, { role: "user", content: userMessage }, { role: "assistant", content: aiReply }]).catch((err) => {
-        if (typeof logger !== "undefined") logger.error({ err }, "Background memory extraction failed");
-      });
+    // 2. Background Memory Extraction (Haasaa ammaa irraa background dhaan memory extract gochuu)
+    if (chatbotId && visitorId && conversationHistory.length >= 2) {
+      extractAndSaveMemory(chatbotId, visitorId, [
+        ...conversationHistory, 
+        { role: "user", content: userMessage }, 
+        { role: "assistant", content: aiReply }
+      ]).catch((err) => 
+        logger.error({ err }, "Background memory extraction failed")
+      );
     }
 
     return aiReply;
   } catch (err) {
-    if (typeof logger !== "undefined") logger.error({ err }, "Groq generation failed");
+    logger.error({ err }, "Groq generation failed");
     return "I'm sorry, I encountered an error processing your request.";
   }
 }
 
-/**
- * 2. Background Memory Extraction (Kallattiin haasaa irraa dandeettii yaadachuu kuusa)
- */
+// Memory Extract godhee kan database keessatti ol kuusu
 export async function extractAndSaveMemory(
   chatbotId: number,
   visitorId: string,
@@ -127,33 +129,9 @@ Extracted Facts:`;
       }
     }
   } catch (err) {
-    if (typeof logger !== "undefined") logger.error({ err }, "Failed to extract memory");
+    logger.error({ err }, "Failed to extract memory");
   }
 }
 
-/**
- * 3. Kanaan dura kan sassaabame (Dhabamee kan ture - Widget.ts kan gargaaramu)
- * Kun RAG Context dhiyyeessa
- */
-export async function getRelevantContext(chatbotId: number, message: string): Promise<string> {
-  try {
-    // Asirratti koodii embedding vector search kee qaama 'getRelevantContext' duraan qabdu itti guuti.
-    // Akka error hin fidhneef yeroof, context gabaabaa ykn empty string daddabaltee koodii kee deebisa.
-    // Yoo koodii isaa qorachuu barbaadde koodii 'rag.ts' isa jalqabaa irraa copy gochuu dandeessa.
-    return ""; 
-  } catch (err) {
-    return "";
-  }
-}
-
-/**
- * 4. Kanaan dura kan sassaabame (Dhabamee kan ture - Documents.ts kan gargaaramu)
- * Kun Documents embed godhee store godha
- */
-export async function embedAndStoreDocument(chatbotId: number, documentId: number, content: string): Promise<void> {
-  try {
-    // Asirratti koodii embedding store gochuuf duraan fayyadamte itti guuti.
-  } catch (err) {
-    if (typeof logger !== "undefined") logger.error({ err }, "Failed to embed document");
-  }
-}
+// Sarara kanas gadiiti function-oonni 'getRelevantContext' fi 'embedAndStoreDocument' 
+// warri ati kanaan dura ijaarite akkuma jiranitti haa turaan, hin tuqin!
