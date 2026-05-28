@@ -60,11 +60,18 @@ router.post("/widget/:chatbotUid/chat", async (req, res): Promise<void> => {
   }));
 
   const context = await getRelevantContext(bot.id, parsed.data.message);
+  
+  // Visitor ID addaan baasanii memory gargaaramuuf
+  const activeVisitorId = conversation.visitorId ?? parsed.data.visitorId ?? "anonymous_user";
+
+  // Memoriitiif bot.id fi activeVisitorId itti daballeera
   const reply = await generateAIResponse(
     bot.systemPrompt,
     context,
     conversationHistory,
-    parsed.data.message
+    parsed.data.message,
+    bot.id,
+    activeVisitorId
   );
 
   await db.insert(messagesTable).values([
