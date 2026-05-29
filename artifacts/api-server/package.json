@@ -15,6 +15,7 @@
     "@clerk/shared": "^4.10.2",
     "@langchain/community": "^1.1.28",
     "@langchain/openai": "^1.4.5",
+    "@opentelemetry/api": "^1.9.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "cheerio": "^1.2.0",
