@@ -13,7 +13,6 @@
  *   - No ESM banner: CJS output already has require() available globally.
  *   - No sourcemaps: reduces bundle size for faster cold starts.
  */
-
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +22,6 @@ import { rm, mkdir } from "node:fs/promises";
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
-// Workspace root is two levels up from artifacts/api-server/
 const workspaceRoot = path.resolve(artifactDir, "..", "..");
 const apiDir = path.resolve(artifactDir, "api");
 const outfile = path.resolve(apiDir, "handler.js");
@@ -39,17 +37,10 @@ async function buildVercelHandler() {
     entryPoints: [path.resolve(artifactDir, "src/handler.ts")],
     platform: "node",
     bundle: true,
-    format: "cjs",    // CommonJS for maximum Vercel runtime compatibility
+    format: "cjs",
     outfile,
     logLevel: "info",
-    sourcemap: false, // No sourcemaps — keeps the bundle small for cold-start speed
-    // -------------------------------------------------------------------------
-    // Externals: identical policy to build.mjs.
-    // We exclude native addons and packages that use binary bindings or complex
-    // dynamic file loading that esbuild cannot inline.  Everything else
-    // (express, drizzle-orm, @clerk/express, openai, cheerio, pino, …) is
-    // bundled directly into the single output file.
-    // -------------------------------------------------------------------------
+    sourcemap: false,
     external: [
       "*.node",
       "sharp",
@@ -85,7 +76,9 @@ async function buildVercelHandler() {
       "@swc/*",
       "@aws-sdk/*",
       "@azure/*",
-      "@opentelemetry/*",
+      // "@opentelemetry/*" <-- REMOVED: was excluding @opentelemetry/api from
+      //   the bundle, causing "Cannot find module" crashes at Vercel runtime.
+      //   @opentelemetry/api is pure JS with no native bindings — bundle it.
       "@google-cloud/*",
       "@google/*",
       "googleapis",
