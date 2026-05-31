@@ -14,15 +14,42 @@ interface SearchResult {
 // embedAndStoreDocument
 // ---------------------------------------------------------------------------
 export async function embedAndStoreDocument(
-  content: string,
+  content: unknown, // ← FIX: was `string`, now `unknown` to catch bad input
   metadata?: Record<string, unknown>
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!content || content.trim().length === 0) {
+    // ── FIX: Defensive coercion before any .trim() call ──────────────────
+    let safeContent: string;
+
+    if (content === null || content === undefined) {
+      return { success: false, error: "Document content is null or undefined." };
+    }
+
+    if (Array.isArray(content)) {
+      // Accidental array — join into one string
+      safeContent = content.map((c) => String(c)).join("\n");
+    } else if (typeof content === "object") {
+      // Accidental object — try common field names
+      const obj = content as Record<string, unknown>;
+      const extracted = obj.content ?? obj.text ?? obj.body ?? obj.data;
+      if (typeof extracted === "string") {
+        safeContent = extracted;
+      } else {
+        return {
+          success: false,
+          error: `Document content is an object with no valid string field. Got: ${JSON.stringify(content).slice(0, 120)}`,
+        };
+      }
+    } else {
+      safeContent = String(content);
+    }
+
+    // Now safe to call .trim()
+    if (safeContent.trim().length === 0) {
       return { success: false, error: "Document content is empty." };
     }
 
-    const chunks = chunkText(content, 500);
+    const chunks = chunkText(safeContent.trim(), 500);
 
     for (const chunk of chunks) {
       await db.insert(userMemoriesTable).values({
@@ -43,14 +70,31 @@ export async function embedAndStoreDocument(
 // getRelevantContext (HYBRID RETRIEVAL)
 // ---------------------------------------------------------------------------
 export async function getRelevantContext(
-  query: string,
+  query: unknown, // ← FIX: was `string`, now `unknown` to catch bad input
   chatbotId: number,
   maxChunks = 5
 ): Promise<string> {
   try {
-    if (!query || !chatbotId) return "";
+    // ── FIX: Defensive coercion before any .replace() call ───────────────
+    let safeQuery: string;
 
-    const cleanQuery = query.replace(/['"\\]/g, "").trim();
+    if (query === null || query === undefined) {
+      return "";
+    }
+
+    if (typeof query === "object") {
+      // Accidental object — try common field names
+      const obj = query as Record<string, unknown>;
+      const extracted = obj.message ?? obj.text ?? obj.content ?? obj.query;
+      safeQuery = typeof extracted === "string" ? extracted : String(extracted ?? "");
+    } else {
+      safeQuery = String(query);
+    }
+
+    if (!safeQuery.trim() || !chatbotId) return "";
+
+    // Now safe to call .replace()
+    const cleanQuery = safeQuery.replace(/['"\\]/g, "").trim();
     if (!cleanQuery) return "";
 
     const keywordPromise = db.execute<SearchResult>(sql`
@@ -105,7 +149,10 @@ export async function getRelevantContext(
       .slice(0, maxChunks);
 
     if (finalSorted.length === 0 && fallbackRows.rows.length > 0) {
-      return fallbackRows.rows.slice(0, maxChunks).map((r: any) => String(r.memoryText)).join("\n\n");
+      return fallbackRows.rows
+        .slice(0, maxChunks)
+        .map((r: any) => String(r.memoryText))
+        .join("\n\n");
     }
 
     return finalSorted.map((r) => r.text).join("\n\n");
@@ -116,7 +163,7 @@ export async function getRelevantContext(
 }
 
 // ---------------------------------------------------------------------------
-// detectQueryType — classifies the user message to guide response strategy
+// detectQueryType
 // ---------------------------------------------------------------------------
 function detectQueryType(
   userMessage: string,
@@ -143,7 +190,7 @@ function detectQueryType(
 
   if (isPersonal && hasMemory) return "personal_memory";
   if (isKB && hasContext) return "knowledge_base";
-  if (hasContext) return "knowledge_base"; // default to KB if context exists
+  if (hasContext) return "knowledge_base";
   return "general";
 }
 
@@ -193,15 +240,15 @@ export async function generateAIResponse(
   const hasContext = context.trim().length > 0;
   const queryType = detectQueryType(userMessage, hasContext, hasMemory);
 
-  // ── 3. Build context section with priority signal ────────────────────────
+  // ── 3. Build context section ─────────────────────────────────────────────
   let contextSection = "";
   if (hasContext) {
-    contextSection = `\n\n[KNOWLEDGE BASE — this is your PRIMARY source for product/service questions. Always check here before answering]:\n${context}`;
+    contextSection = `\n\n[KNOWLEDGE BASE — PRIMARY source for product/service questions. Always check here first]:\n${context}`;
   } else {
     contextSection = `\n\n[NO KNOWLEDGE BASE LOADED]: For specific product or pricing questions, tell the user clearly and briefly that this information isn't available yet.`;
   }
 
-  // ── 4. Build query-type instruction ─────────────────────────────────────
+  // ── 4. Query-type instruction ────────────────────────────────────────────
   const queryTypeInstruction = {
     knowledge_base: `[CURRENT QUERY TYPE: KNOWLEDGE BASE]
 The user is asking about a product, service, or feature.
@@ -222,7 +269,7 @@ This is a general message (greeting, small talk, or unclear intent).
 - Keep it warm, concise, and helpful.`,
   }[queryType];
 
-  // ── 5. Compose final system prompt ───────────────────────────────────────
+  // ── 5. Compose system prompt ─────────────────────────────────────────────
   const basePrompt = systemPrompt ?? `
 You are SmartSupport — a helpful, professional AI customer support assistant.
 
@@ -230,7 +277,7 @@ You are SmartSupport — a helpful, professional AI customer support assistant.
 LANGUAGE POLICY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - Default language: English. Always respond in English unless told otherwise.
-- If the user explicitly requests another language, switch to it immediately and maintain it for the rest of the conversation.
+- If the user explicitly requests another language, switch to it immediately and maintain it.
 - NEVER mix languages in a single response unless the user does it first.
 - If the user's language is unclear, use English.
 - If asked to switch back to English, do so immediately.
@@ -276,7 +323,7 @@ AMHARIC (only when user requests it)
     contextSection +
     `\n\n${queryTypeInstruction}`;
 
-  // ── 6. Build messages array ──────────────────────────────────────────────
+  // ── 6. Build messages ────────────────────────────────────────────────────
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: fullSystemPrompt },
     ...conversationHistory.slice(-8),
@@ -289,7 +336,7 @@ AMHARIC (only when user requests it)
       model: "llama-3.3-70b-versatile",
       messages,
       max_tokens: 400,
-      temperature: 0.3, // Lower = more faithful to knowledge base, less hallucination
+      temperature: 0.3,
     });
 
     const aiReply =
