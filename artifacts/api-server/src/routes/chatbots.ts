@@ -2,7 +2,7 @@ import { Router } from "express";
 import { eq, count, and } from "drizzle-orm";
 import { db, chatbotsTable, documentsTable, conversationsTable } from "@workspace/db";
 import { requireAuth, getUserId } from "../lib/auth";
-import { IngestionService } from "../services/ingestion"; // 1. Ingestion service import gochuu
+import { IngestionService } from "../services/ingestion";
 import {
   CreateChatbotBody,
   UpdateChatbotBody,
@@ -181,7 +181,7 @@ router.get("/chatbots/:id/widget-script", requireAuth, async (req, res): Promise
   res.json({ scriptTag, chatbotUid: bot.uid, embedInstructions });
 });
 
-// 2. TRIGGER CRAWL PIPELINE ENDPOINT (Modular & Secure)
+// ── Crawl pipeline trigger ───────────────────────────────────────────────────
 router.post("/chatbots/:id/crawl", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = getUserId(req);
@@ -198,7 +198,6 @@ router.post("/chatbots/:id/crawl", requireAuth, async (req, res): Promise<void> 
       return;
     }
 
-    // Abbaa chatbotichaa qofa akka ta'e mirkaneessuuf (Security Check)
     const [bot] = await db
       .select()
       .from(chatbotsTable)
@@ -209,7 +208,6 @@ router.post("/chatbots/:id/crawl", requireAuth, async (req, res): Promise<void> 
       return;
     }
 
-    // Ingestion service irraa safe trigger gochuu
     const result = await IngestionService.triggerCrawl(chatbotId, url);
 
     if (!result.success) {
@@ -217,9 +215,69 @@ router.post("/chatbots/:id/crawl", requireAuth, async (req, res): Promise<void> 
       return;
     }
 
-    res.status(202).json(result); // 202 Accepted (Processing asynchronous pipeline)
+    res.status(202).json(result);
   } catch (error: any) {
     res.status(500).json({ error: "Internal server error during crawl triggering.", details: error.message });
+  }
+});
+
+// ── Document upload + ingestion ──────────────────────────────────────────────
+router.post("/chatbots/:id/documents", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const chatbotId = parseInt(req.params.id, 10);
+
+    if (isNaN(chatbotId)) {
+      res.status(400).json({ error: "Invalid Chatbot ID format." });
+      return;
+    }
+
+    // Validate ownership
+    const [bot] = await db
+      .select()
+      .from(chatbotsTable)
+      .where(and(eq(chatbotsTable.id, chatbotId), eq(chatbotsTable.userId, userId)));
+
+    if (!bot) {
+      res.status(404).json({ error: "Chatbot not found or unauthorized access." });
+      return;
+    }
+
+    // Validate content at the route boundary
+    const { content, title, type = "text" } = req.body ?? {};
+
+    if (typeof content !== "string" || content.trim().length === 0) {
+      res.status(400).json({ error: "content must be a non-empty string." });
+      return;
+    }
+
+    if (!title || typeof title !== "string" || title.trim().length === 0) {
+      res.status(400).json({ error: "title must be a non-empty string." });
+      return;
+    }
+
+    // Create document record as pending
+    const [doc] = await db
+      .insert(documentsTable)
+      .values({
+        chatbotId,
+        title: title.trim(),
+        type,
+        status: "pending",
+        chunkCount: 0,
+      })
+      .returning();
+
+    // Respond immediately with 201 so UI doesn't hang
+    res.status(201).json(doc);
+
+    // Process ingestion in background — status updates to ready or failed
+    IngestionService.ingestDocument(chatbotId, doc.id, content.trim()).catch((err) => {
+      console.error("Background ingestion failed:", err);
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ error: "Internal server error during document upload.", details: error.message });
   }
 });
 
