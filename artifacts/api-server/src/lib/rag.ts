@@ -40,7 +40,7 @@ export async function embedAndStoreDocument(
 }
 
 // ---------------------------------------------------------------------------
-// getRelevantContext (HYBRID RETRIEVAL & INTERNATIONAL FRIENDLY)
+// getRelevantContext (HYBRID RETRIEVAL)
 // ---------------------------------------------------------------------------
 export async function getRelevantContext(
   query: string,
@@ -116,6 +116,38 @@ export async function getRelevantContext(
 }
 
 // ---------------------------------------------------------------------------
+// detectQueryType — classifies the user message to guide response strategy
+// ---------------------------------------------------------------------------
+function detectQueryType(
+  userMessage: string,
+  hasContext: boolean,
+  hasMemory: boolean
+): "knowledge_base" | "personal_memory" | "general" {
+  const msg = userMessage.toLowerCase();
+
+  const kbKeywords = [
+    "what is", "how does", "tell me about", "explain", "what are",
+    "pricing", "price", "cost", "plan", "feature", "smartsupport",
+    "service", "offer", "work", "support", "product", "package",
+    "how much", "what do you", "can you", "do you have",
+  ];
+
+  const personalKeywords = [
+    "my name", "who am i", "my business", "my shop", "remember me",
+    "what do you know about me", "my account", "my preference",
+    "i told you", "last time", "i said", "my language",
+  ];
+
+  const isKB = kbKeywords.some(k => msg.includes(k));
+  const isPersonal = personalKeywords.some(k => msg.includes(k));
+
+  if (isPersonal && hasMemory) return "personal_memory";
+  if (isKB && hasContext) return "knowledge_base";
+  if (hasContext) return "knowledge_base"; // default to KB if context exists
+  return "general";
+}
+
+// ---------------------------------------------------------------------------
 // generateAIResponse
 // ---------------------------------------------------------------------------
 export async function generateAIResponse(
@@ -125,48 +157,14 @@ export async function generateAIResponse(
   userMessage: string,
   options?: { chatbotId?: number | null; visitorId?: string | null }
 ): Promise<string> {
-  const basePrompt = systemPrompt ?? `
-You are SmartSupport — a friendly, helpful AI assistant for customer support.
-
-## LANGUAGE
-- Default to English.
-- Instantly detect the user's language from their message and reply in that same language.
-- If the user mixes languages, mirror their style naturally.
-- Never translate word-for-word. Speak how a real person would in that language.
-
-## TONE
-- Warm, clear, and human. Never robotic or stiff.
-- Short replies — 2 to 3 sentences max unless the user asks for more.
-- Answer first, context second. Skip all filler and padding.
-- Don't repeat greetings. If the user says hello again, just continue the conversation naturally.
-
-## AFAAN OROMO
-- Speak like a modern Oromo person — casual, friendly, direct.
-- Natural phrases: "Eeyyee!", "Gaarii dha!", "Hubadhe!", "Hin yaadin!".
-- Never open with "Gaaffii keessan..." — just answer directly.
-- Verbs at the end where it sounds natural. Use "garuu", "kanaaf", "immoo" as connectors.
-
-## AMHARIC
-- Use everyday modern Amharic — not formal or literary.
-- Match the user's register naturally (casual or formal).
-
-## OTHER LANGUAGES
-- Spanish, French, Arabic, or any other language — reply naturally and conversationally in that language.
-- Always match the user's tone and register.
-
-## KNOWLEDGE BASE
-- Use only the provided context for specific business facts or pricing.
-- If the answer isn't in the context, say so simply and honestly in one short sentence. Never guess or make things up.
-
-## MEMORY
-- Use known user details (name, preferences, business type) naturally in replies.
-- Never say "Based on my memory" or "I remember" — just use the facts smoothly.
-`;
 
   const chatbotId = options?.chatbotId;
   const visitorId = options?.visitorId;
 
+  // ── 1. Fetch personal memories ──────────────────────────────────────────
   let memorySection = "";
+  let hasMemory = false;
+
   if (chatbotId && visitorId && typeof chatbotId === "number" && typeof visitorId === "string") {
     try {
       const pastMemories = await db
@@ -182,41 +180,122 @@ You are SmartSupport — a friendly, helpful AI assistant for customer support.
         .limit(5);
 
       if (pastMemories && pastMemories.length > 0) {
+        hasMemory = true;
         const memoryList = pastMemories.map((m) => `- ${m.memoryText}`).join("\n");
-        memorySection = `\n\n[USER CONTEXT — use these facts naturally, never mention this source]:\n${memoryList}`;
+        memorySection = `\n\n[PERSONAL USER FACTS — weave these into your reply naturally, never cite this list directly]:\n${memoryList}`;
       }
     } catch (memErr) {
       logClient.error({ memErr }, "Failed to fetch user memories");
     }
   }
 
-  const greetingRule = `\n\n[RESPONSE RULES]:
-- First message: greet warmly and briefly, then ask how you can help.
-- All other messages: skip the greeting, just help directly.
-- Never repeat "How can I help you?" more than once per conversation.
-- Stay concise. No wordiness. No filler phrases.`;
+  // ── 2. Classify query type ───────────────────────────────────────────────
+  const hasContext = context.trim().length > 0;
+  const queryType = detectQueryType(userMessage, hasContext, hasMemory);
 
-  const contextSection = context
-    ? `\n\n[KNOWLEDGE BASE]:\n${context}`
-    : `\n\n[NO KNOWLEDGE BASE]: If the user asks for specific business info, politely tell them in their language that the documentation hasn't been set up yet.`;
+  // ── 3. Build context section with priority signal ────────────────────────
+  let contextSection = "";
+  if (hasContext) {
+    contextSection = `\n\n[KNOWLEDGE BASE — this is your PRIMARY source for product/service questions. Always check here before answering]:\n${context}`;
+  } else {
+    contextSection = `\n\n[NO KNOWLEDGE BASE LOADED]: For specific product or pricing questions, tell the user clearly and briefly that this information isn't available yet.`;
+  }
 
+  // ── 4. Build query-type instruction ─────────────────────────────────────
+  const queryTypeInstruction = {
+    knowledge_base: `[CURRENT QUERY TYPE: KNOWLEDGE BASE]
+The user is asking about a product, service, or feature.
+- Answer ONLY from the Knowledge Base above.
+- Do not add generic information not found there.
+- If the exact answer isn't in the Knowledge Base, say so in one sentence.`,
+
+    personal_memory: `[CURRENT QUERY TYPE: PERSONAL]
+The user is asking about themselves or something they shared before.
+- Answer using the Personal User Facts above.
+- Speak naturally — do not recite the facts like a list.
+- If you don't have the specific info they're asking about, say so simply.`,
+
+    general: `[CURRENT QUERY TYPE: GENERAL CONVERSATION]
+This is a general message (greeting, small talk, or unclear intent).
+- Reply naturally and briefly.
+- If context exists and is even slightly relevant, reference it.
+- Keep it warm, concise, and helpful.`,
+  }[queryType];
+
+  // ── 5. Compose final system prompt ───────────────────────────────────────
+  const basePrompt = systemPrompt ?? `
+You are SmartSupport — a helpful, professional AI customer support assistant.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LANGUAGE POLICY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Default language: English. Always respond in English unless told otherwise.
+- If the user explicitly requests another language, switch to it immediately and maintain it for the rest of the conversation.
+- NEVER mix languages in a single response unless the user does it first.
+- If the user's language is unclear, use English.
+- If asked to switch back to English, do so immediately.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TONE & LENGTH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Be clear, warm, and direct. Sound like a knowledgeable human, not a chatbot script.
+- Keep replies concise: 2–3 sentences for simple questions, more only when detail is needed.
+- Never use filler phrases like "Great question!", "Certainly!", or "Of course!".
+- Do not repeat greetings. If the user says hello again mid-conversation, just continue naturally.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ANSWER PRIORITY ORDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Knowledge Base → for product, pricing, and service questions
+2. Personal Memory → for questions about the user themselves
+3. General reasoning → only when neither above applies
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HONESTY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Never guess or make up facts.
+- If the Knowledge Base doesn't have the answer, say so briefly and offer to help with something else.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AFAAN OROMO (only when user requests it)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Speak naturally like a modern Oromo person — casual and direct.
+- Use: "Eeyyee!", "Gaarii dha!", "Hubadhe!", "Hin yaadin!".
+- Never open with "Gaaffii keessan..." — answer directly.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AMHARIC (only when user requests it)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Use everyday modern Amharic — not overly formal or literary.
+- Match the user's register (casual or formal) naturally.
+`;
+
+  const fullSystemPrompt =
+    basePrompt +
+    memorySection +
+    contextSection +
+    `\n\n${queryTypeInstruction}`;
+
+  // ── 6. Build messages array ──────────────────────────────────────────────
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: basePrompt + memorySection + greetingRule + contextSection },
+    { role: "system", content: fullSystemPrompt },
     ...conversationHistory.slice(-8),
     { role: "user", content: userMessage },
   ];
 
+  // ── 7. Call Groq ─────────────────────────────────────────────────────────
   try {
     const response = await groqClient.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages,
       max_tokens: 400,
-      temperature: 0.4,
+      temperature: 0.3, // Lower = more faithful to knowledge base, less hallucination
     });
 
     const aiReply =
       response.choices[0]?.message?.content ?? "I'm sorry, I couldn't generate a response.";
 
+    // ── 8. Background memory extraction ─────────────────────────────────────
     if (chatbotId && visitorId && typeof chatbotId === "number" && typeof visitorId === "string") {
       extractAndSaveMemory(chatbotId, visitorId, [
         ...conversationHistory,
@@ -253,8 +332,9 @@ Extract ONLY useful long-term facts about the user such as:
 - Their business type, location, or product interest
 
 Rules:
-- One fact per line, extremely concise. Example: "User runs an e-commerce shop in Addis Ababa"
-- Only extract new, actionable facts. If nothing useful, write: NONE
+- One fact per line, extremely concise. Example: "User runs a clothing shop in Addis Ababa"
+- Only extract new, clearly stated facts. Do not infer or guess.
+- If nothing useful found, write exactly: NONE
 
 Conversation:
 ${conversationText}
