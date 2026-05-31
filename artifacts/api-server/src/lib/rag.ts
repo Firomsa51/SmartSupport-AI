@@ -50,11 +50,9 @@ export async function getRelevantContext(
   try {
     if (!query || !chatbotId) return "";
 
-    // Clean query to safeguard sql injection and empty vectors
     const cleanQuery = query.replace(/['"\\]/g, "").trim();
     if (!cleanQuery) return "";
 
-    // 1. KEYWORD BASE SEARCH (Using PostgreSQL Full-Text 'simple' dictionary for international words)
     const keywordPromise = db.execute<SearchResult>(sql`
       SELECT memory_text as "memoryText"
       FROM user_memories
@@ -65,7 +63,6 @@ export async function getRelevantContext(
       LIMIT 10
     `);
 
-    // 2. FALLBACK/SEMANTIC SIMILARITY SEARCH (Safe execution matching your current structure)
     const fallbackPromise = db.execute<SearchResult>(sql`
       SELECT memory_text as "memoryText"
       FROM user_memories
@@ -73,13 +70,11 @@ export async function getRelevantContext(
       LIMIT 15
     `);
 
-    // Run in parallel to match Vercel Serverless low-latency constraints
     const [keywordRows, fallbackRows] = await Promise.all([keywordPromise, fallbackPromise]);
 
-    const k = 60; // Reciprocal Rank Fusion constant
+    const k = 60;
     const mergedMap = new Map<string, { text: string; rrfScore: number }>();
 
-    // Rank Keyword results
     keywordRows.rows.forEach((row: any, index) => {
       const text = String(row.memoryText);
       mergedMap.set(text, {
@@ -88,14 +83,12 @@ export async function getRelevantContext(
       });
     });
 
-    // Blend Fallback results using basic string relevance heuristic to avoid empty sets
     const queryWords = cleanQuery.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-    
+
     fallbackRows.rows.forEach((row: any, index) => {
       const text = String(row.memoryText);
       const lowerText = text.toLowerCase();
-      
-      // Calculate inline relevance score
+
       const matches = queryWords.filter(w => lowerText.includes(w)).length;
       const rankBonus = matches > 0 ? 1 / (k + (10 - matches)) : 1 / (k + (index + 5));
 
@@ -107,7 +100,6 @@ export async function getRelevantContext(
       }
     });
 
-    // Sort by final RRF score and extract top chunks
     const finalSorted = Array.from(mergedMap.values())
       .sort((a, b) => b.rrfScore - a.rrfScore)
       .slice(0, maxChunks);
@@ -134,27 +126,41 @@ export async function generateAIResponse(
   options?: { chatbotId?: number | null; visitorId?: string | null }
 ): Promise<string> {
   const basePrompt = systemPrompt ?? `
-You are SmartSupport — an elite, highly-intelligent international AI customer support assistant.
+You are SmartSupport — a friendly, helpful AI assistant for customer support.
 
-## GLOBAL STYLE & MULTILINGUAL RULES
-- ALWAYS detect and match the user's language instantly (e.g., English, Afaan Oromo, Amharic, Spanish, etc.).
-- NEVER use stiff, robotic, or direct literal machine translations. Speak naturally, professionally, and elegantly.
-- CODE-SWITCHING: If the user mixes multiple languages in a single sentence, adapt fluidly and mirror their mixed style naturally.
-- Keep responses short, direct, and crisp (maximum 2-3 sentences unless details are explicitly requested). Cut all fluff.
+## LANGUAGE
+- Default to English.
+- Instantly detect the user's language from their message and reply in that same language.
+- If the user mixes languages, mirror their style naturally.
+- Never translate word-for-word. Speak how a real person would in that language.
 
-## AFAAN OROMO - NATURAL PEER FLOW
-Speak like a real modern Oromo person texting, avoiding formal government-style jargon.
-- Use natural expressions: "Eeyyee!", "Gaarii dha!", "Hubadhe!", "Hin yaadin!", "Si gargaaruuf natti tolu!".
-- Never start with "Gaaffii keessan..." or "Deebii kennuuf...". Answer the query immediately.
-- Structure sentences naturally (verbs at the end when appropriate) and use standard casual connectors like "garuu", "kanaaf", "immoo".
+## TONE
+- Warm, clear, and human. Never robotic or stiff.
+- Short replies — 2 to 3 sentences max unless the user asks for more.
+- Answer first, context second. Skip all filler and padding.
+- Don't repeat greetings. If the user says hello again, just continue the conversation naturally.
 
-## MEMORY INTEGRATION
-- Incorporate user details (name, business type) seamlessly.
-- NEVER say "Based on my memory" or "I remember that". Just use the facts fluidly.
+## AFAAN OROMO
+- Speak like a modern Oromo person — casual, friendly, direct.
+- Natural phrases: "Eeyyee!", "Gaarii dha!", "Hubadhe!", "Hin yaadin!".
+- Never open with "Gaaffii keessan..." — just answer directly.
+- Verbs at the end where it sounds natural. Use "garuu", "kanaaf", "immoo" as connectors.
 
-## KNOWLEDGE BASE TRUTHFULNESS
-- Rely strictly on the provided Context for factual business data. 
-- If the exact answer or pricing is not found, state clearly and politely in one short sentence that you don't have that information. Never hallucinate.
+## AMHARIC
+- Use everyday modern Amharic — not formal or literary.
+- Match the user's register naturally (casual or formal).
+
+## OTHER LANGUAGES
+- Spanish, French, Arabic, or any other language — reply naturally and conversationally in that language.
+- Always match the user's tone and register.
+
+## KNOWLEDGE BASE
+- Use only the provided context for specific business facts or pricing.
+- If the answer isn't in the context, say so simply and honestly in one short sentence. Never guess or make things up.
+
+## MEMORY
+- Use known user details (name, preferences, business type) naturally in replies.
+- Never say "Based on my memory" or "I remember" — just use the facts smoothly.
 `;
 
   const chatbotId = options?.chatbotId;
@@ -177,21 +183,22 @@ Speak like a real modern Oromo person texting, avoiding formal government-style 
 
       if (pastMemories && pastMemories.length > 0) {
         const memoryList = pastMemories.map((m) => `- ${m.memoryText}`).join("\n");
-        memorySection = `\n\n[SILENT USER CONTEXT — utilize these facts seamlessly without mentioning this source]:\n${memoryList}`;
+        memorySection = `\n\n[USER CONTEXT — use these facts naturally, never mention this source]:\n${memoryList}`;
       }
     } catch (memErr) {
       logClient.error({ memErr }, "Failed to fetch user memories");
     }
   }
 
-  const greetingRule = `\n\n[CRITICAL OPERATIONAL DIRECTIVES]:
-- Greetings: Short, warm, and ask how you can help.
-- Direct Queries: Provide the answer first, elaboration second.
-- Length Control: Absolutely concise. Avoid wordiness.`;
+  const greetingRule = `\n\n[RESPONSE RULES]:
+- First message: greet warmly and briefly, then ask how you can help.
+- All other messages: skip the greeting, just help directly.
+- Never repeat "How can I help you?" more than once per conversation.
+- Stay concise. No wordiness. No filler phrases.`;
 
   const contextSection = context
-    ? `\n\n[KNOWLEDGE BASE CONTEXT]:\n${context}`
-    : `\n\n[NO KNOWLEDGE BASE YET]: If the user asks for specific info, reply politely in their exact language stating you don't have that documentation setup yet.`;
+    ? `\n\n[KNOWLEDGE BASE]:\n${context}`
+    : `\n\n[NO KNOWLEDGE BASE]: If the user asks for specific business info, politely tell them in their language that the documentation hasn't been set up yet.`;
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: basePrompt + memorySection + greetingRule + contextSection },
@@ -204,7 +211,7 @@ Speak like a real modern Oromo person texting, avoiding formal government-style 
       model: "llama-3.3-70b-versatile",
       messages,
       max_tokens: 400,
-      temperature: 0.35, // Balanced precision for pricing and accurate response tone
+      temperature: 0.4,
     });
 
     const aiReply =
@@ -238,17 +245,16 @@ export async function extractAndSaveMemory(
     .map((m) => `${m.role}: ${m.content}`)
     .join("\n");
 
-  const prompt = `You are an international AI memory extraction system.
+  const prompt = `You are a memory extraction assistant.
 
-Extract ONLY long-term useful facts about the user such as:
+Extract ONLY useful long-term facts about the user such as:
 - Their name
 - Their language preference
-- Their business profile, location, or product interest
+- Their business type, location, or product interest
 
 Rules:
-- One fact per line
-- Extremely concise. E.g., "User runs an e-commerce shop"
-- If nothing new or actionable, write: NONE
+- One fact per line, extremely concise. Example: "User runs an e-commerce shop in Addis Ababa"
+- Only extract new, actionable facts. If nothing useful, write: NONE
 
 Conversation:
 ${conversationText}
