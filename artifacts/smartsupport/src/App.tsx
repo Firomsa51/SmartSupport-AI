@@ -8,7 +8,7 @@ import {
   SignedOut,
   useClerk,
   useAuth,
-} from "@clerk/clerk-react";
+} from "@clerk/react";
 import { dark } from "@clerk/themes";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -245,22 +245,4 @@ function ClerkProviderWithRoutes() {
         <TooltipProvider>
           <ErrorBoundary>
             <AppRouter />
-          </ErrorBoundary>
-          <Toaster richColors position="top-right" />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </ClerkProvider>
-  );
-}
-
-function App() {
-  return (
-    <ThemeProvider defaultTheme="dark" storageKey="smartsupport-theme">
-      <WouterRouter base={basePath}>
-        <ClerkProviderWithRoutes />
-      </WouterRouter>
-    </ThemeProvider>
-  );
-}
-
-export default App;
+          </ErrorBoundary
