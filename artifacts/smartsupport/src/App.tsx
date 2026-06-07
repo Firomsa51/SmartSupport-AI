@@ -48,51 +48,13 @@ const clerkAppearance = {
     fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
     borderRadius: "0.5rem",
   },
-  elements: {
-    rootBox: "w-full flex justify-center",
-    cardBox:
-      "bg-slate-900 rounded-2xl w-[440px] max-w-full overflow-hidden border border-slate-700",
-    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
-    headerTitle: "text-slate-100 font-semibold",
-    headerSubtitle: "text-slate-400",
-    socialButtonsBlockButtonText: "text-slate-200",
-    formFieldLabel: "text-slate-300",
-    footerActionLink: "text-blue-400 hover:text-blue-300",
-    footerActionText: "text-slate-400",
-    dividerText: "text-slate-500",
-    formButtonPrimary: "bg-blue-600 hover:bg-blue-500 text-white",
-    formFieldInput:
-      "bg-slate-800 border-slate-600 text-slate-100 placeholder-slate-500",
-    footerAction: "border-t border-slate-700",
-    dividerLine: "bg-slate-700",
-    alert: "bg-slate-800 border-slate-700",
-    socialButtonsBlockButton:
-      "border-slate-600 bg-slate-800 hover:bg-slate-700",
-  },
 };
 
 function LoadingScreen() {
   return (
-    <div style={{
-      minHeight: "100vh",
-      backgroundColor: "#0f172a",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "column",
-      gap: "16px"
-    }}>
-      <div style={{
-        width: "40px",
-        height: "40px",
-        border: "3px solid #334155",
-        borderTop: "3px solid #3b82f6",
-        borderRadius: "50%",
-        animation: "spin 1s linear infinite"
-      }} />
-      <p style={{ color: "#94a3b8", fontSize: "14px" }}>Loading SmartSupport...</p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-slate-100">
+      <div className="w-10 h-10 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+      <p className="mt-4 text-slate-400">Loading SmartSupport...</p>
     </div>
   );
 }
@@ -245,4 +207,22 @@ function ClerkProviderWithRoutes() {
         <TooltipProvider>
           <ErrorBoundary>
             <AppRouter />
-          </ErrorBoundary
+          </ErrorBoundary>
+          <Toaster richColors position="top-right" />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider defaultTheme="dark" storageKey="smartsupport-theme">
+      <WouterRouter base={basePath}>
+        <ClerkProviderWithRoutes />
+      </WouterRouter>
+    </ThemeProvider>
+  );
+}
+
+export default App;
