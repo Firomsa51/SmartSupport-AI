@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useUser, useClerk } from "@clerk/clerk-react";
 import { useTheme } from "@/components/theme-provider";
-import { Bot, LayoutDashboard, Moon, Sun, LogOut, MessageSquare, Menu, X } from "lucide-react";
+import { LayoutDashboard, Moon, Sun, LogOut, MessageSquare, Menu, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -16,32 +16,41 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const initials = user?.firstName?.[0] ?? user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() ?? "U";
+  const displayName = user?.firstName ?? user?.emailAddresses?.[0]?.emailAddress?.split("@")[0] ?? "User";
+  const email = user?.emailAddresses?.[0]?.emailAddress ?? "";
+
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
+
+      {/* Sidebar Desktop */}
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-60 bg-sidebar border-r border-sidebar-border flex flex-col
+        fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border flex flex-col
         transition-transform duration-200
         ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
         md:translate-x-0 md:static md:flex
       `}>
-        <div className="h-16 flex items-center gap-2 px-5 border-b border-sidebar-border">
-          <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-            <MessageSquare className="w-3.5 h-3.5 text-primary-foreground" />
+        {/* Logo */}
+        <div className="h-16 flex items-center gap-2.5 px-5 border-b border-border">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm">
+            <Zap className="w-4 h-4 text-primary-foreground" />
           </div>
-          <span className="font-semibold text-sm tracking-tight">SmartSupport AI</span>
+          <span className="font-bold text-base tracking-tight">SmartSupport</span>
+          <span className="text-xs text-muted-foreground font-medium ml-auto bg-muted px-1.5 py-0.5 rounded">AI</span>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 py-4 px-3 space-y-1">
           {navItems.map((item) => {
             const active = location.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href}>
                 <button
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                  onClick={() => setMobileOpen(false)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     active
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/60"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   }`}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
@@ -53,23 +62,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border space-y-2">
-          <div className="flex items-center gap-2.5 px-2 py-1.5">
-            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-primary">
-                {user?.firstName?.[0] ?? user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() ?? "U"}
-              </span>
+        {/* User Footer */}
+        <div className="p-4 border-t border-border space-y-3">
+          {/* User Info */}
+          <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-muted/50">
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
+              <span className="text-xs font-bold text-primary-foreground">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate">{user?.firstName ?? "User"}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.emailAddresses?.[0]?.emailAddress}</p>
+              <p className="text-xs font-semibold truncate">{displayName}</p>
+              <p className="text-xs text-muted-foreground truncate">{email}</p>
             </div>
           </div>
-          <div className="flex gap-1">
+
+          {/* Actions */}
+          <div className="flex gap-2">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="flex-1 gap-2 text-xs"
+              className="flex-1 gap-2 text-xs h-8"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               data-testid="button-theme-toggle"
             >
@@ -77,9 +88,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {theme === "dark" ? "Light" : "Dark"}
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="gap-2 text-xs text-muted-foreground"
+              className="gap-2 text-xs h-8 text-muted-foreground hover:text-destructive hover:border-destructive"
               onClick={() => signOut({ redirectUrl: "/" })}
               data-testid="button-sign-out"
             >
@@ -91,23 +102,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile overlay */}
       {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Main */}
+      {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 flex items-center justify-between px-6 border-b border-border md:hidden">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-sm">SmartSupport AI</span>
+        {/* Mobile Header */}
+        <header className="h-16 flex items-center justify-between px-5 border-b border-border md:hidden bg-card">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
+              <Zap className="w-3.5 h-3.5 text-primary-foreground" />
+            </div>
+            <span className="font-bold text-sm">SmartSupport AI</span>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setMobileOpen(!mobileOpen)} data-testid="button-menu">
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
         </header>
+
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
