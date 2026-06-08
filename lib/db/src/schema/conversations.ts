@@ -18,6 +18,8 @@ export const messagesTable = pgTable("messages", {
   conversationId: integer("conversation_id").notNull().references(() => conversationsTable.id, { onDelete: "cascade" }),
   role: text("role").notNull(), // 'user', 'assistant', 'system'
   content: text("content").notNull(),
+  user_ip: text("user_ip"),                                                          // ← NEW
+  request_timestamp: timestamp("request_timestamp", { withTimezone: true }),         // ← NEW
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -25,8 +27,8 @@ export const messagesTable = pgTable("messages", {
 export const userMemoriesTable = pgTable("user_memories", {
   id: serial("id").primaryKey(),
   chatbotId: integer("chatbot_id").notNull().references(() => chatbotsTable.id, { onDelete: "cascade" }),
-  visitorId: text("visitor_id").notNull(), // User addaan baasuuf (ykn profile isaanii)
-  memoryText: text("memory_text").notNull(), // Fakkeenya: "User wants to automate English customer support"
+  visitorId: text("visitor_id").notNull(),
+  memoryText: text("memory_text").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
