@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { neon } from "@neondatabase/serverless";
 import { db, chatbotsTable, conversationsTable, messagesTable } from "@workspace/db";
 import { getRelevantContext, generateAIResponse } from "../lib/rag";
@@ -10,19 +10,44 @@ const router = Router();
 // ─── Neon Serverless SQL client (for raw rate-limit query) ───────────────────
 const neonSql = neon(process.env.DATABASE_URL!);
 
-// ─── Helper: Extract real client IP from Vercel / Express headers ────────────
-function extractClientIp(req: Parameters<typeof router.post>[1] extends (req: infer R, ...args: any[]) => any ? R : never): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) {
-    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(",")[0];
-    return first.trim();
-  }
-  return req.socket?.remoteAddress ?? req.ip ?? "unknown";
-}
-
 // ─── Constants ───────────────────────────────────────────────────────────────
-const RATE_LIMIT_MAX = 5;          // max messages
-const RATE_LIMIT_WINDOW = "1 minute"; // window
+const RATE_LIMIT_MAX = 5;
+const CONFIDENCE_THRESHOLD = 0.5;
+
+// ─── Helper: Parse AI reply that may contain a confidence score ──────────────
+// generateAIResponse may return either:
+//   A) Plain text → we default confidence to 1.0
+//   B) JSON string: { "reply": "...", "confidence": 0.72 }
+//   C) Text with trailing tag: "Some answer [confidence:0.83]"
+function parseAIOutput(raw: string): { reply: string; confidence: number } {
+  // Try JSON parse first
+  try {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("{")) {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed.reply === "string" && typeof parsed.confidence === "number") {
+        return {
+          reply: parsed.reply.trim(),
+          confidence: Math.min(1, Math.max(0, parsed.confidence)),
+        };
+      }
+    }
+  } catch {
+    // not JSON, fall through
+  }
+
+  // Try inline tag: [confidence:0.83] or [confidence: 0.83]
+  const tagMatch = raw.match(/\[confidence:\s*([\d.]+)\]/i);
+  if (tagMatch) {
+    return {
+      reply: raw.replace(tagMatch[0], "").trim(),
+      confidence: Math.min(1, Math.max(0, parseFloat(tagMatch[1]))),
+    };
+  }
+
+  // Plain text — treat as fully confident
+  return { reply: raw.trim(), confidence: 1.0 };
+}
 
 router.post("/widget/:chatbotUid/chat", async (req, res): Promise<void> => {
   try {
@@ -116,9 +141,20 @@ router.post("/widget/:chatbotUid/chat", async (req, res): Promise<void> => {
     const activeVisitorId = conversation.visitorId ?? parsed.data.visitorId ?? null;
 
     // ── 10. Generate AI response via Groq (Llama-3) ──────────────────────────
-    const reply = await generateAIResponse(
+    // We inject a confidence instruction into the system context so Llama-3
+    // appends a [confidence:X.XX] tag at the end of its reply, which we parse.
+    const confidenceInstruction = `
+After your reply, on the same line at the very end, append exactly this tag (replace X.XX with your actual score):
+[confidence:X.XX]
+The score must be a decimal between 0.00 and 1.00 reflecting how well your answer is supported by the provided document context.
+- 1.00 = fully answered from context
+- 0.50 = partially answered or uncertain
+- 0.00 = not found in context at all
+Do NOT explain the score. Just append the tag silently.`;
+
+    const rawReply = await generateAIResponse(
       bot.systemPrompt,
-      context,
+      context + "\n\n" + confidenceInstruction,
       conversationHistory,
       parsed.data.message,
       {
@@ -127,7 +163,27 @@ router.post("/widget/:chatbotUid/chat", async (req, res): Promise<void> => {
       }
     );
 
-    // ── 11. Persist messages WITH user_ip & request_timestamp ────────────────
+    // ── 11. Parse reply and extract confidence score ──────────────────────────
+    const { reply, confidence } = parseAIOutput(rawReply);
+
+    // ── 12. Human Handover Decision Logic ────────────────────────────────────
+    if (confidence < CONFIDENCE_THRESHOLD) {
+      // AI is unsure — flag conversation for human review silently in background
+      await db
+        .update(conversationsTable)
+        .set({
+          needs_human_review: true,
+          last_unanswered_query: parsed.data.message,
+        })
+        .where(eq(conversationsTable.id, conversation.id));
+
+      console.log(
+        `[Handover] Conversation ${conversation.id} flagged for human review. ` +
+        `Confidence: ${confidence.toFixed(2)} | Query: "${parsed.data.message}"`
+      );
+    }
+
+    // ── 13. Persist messages WITH confidence_score, user_ip, request_timestamp
     const now = new Date().toISOString();
 
     await db.insert(messagesTable).values([
@@ -137,25 +193,29 @@ router.post("/widget/:chatbotUid/chat", async (req, res): Promise<void> => {
         content: parsed.data.message,
         user_ip: userIp,
         request_timestamp: now,
+        // user messages don't have a confidence score
       },
       {
         conversationId: conversation.id,
         role: "assistant",
         content: reply,
-        user_ip: userIp,           // tag assistant row too — keeps audit trail clean
+        user_ip: userIp,
         request_timestamp: now,
+        confidence_score: confidence.toFixed(2), // ← saved as decimal string for pg numeric
       },
     ]);
 
-    // ── 12. Update conversation message count ─────────────────────────────────
+    // ── 14. Update conversation message count ─────────────────────────────────
     await db
       .update(conversationsTable)
       .set({ messageCount: (conversation.messageCount ?? 0) + 2 })
       .where(eq(conversationsTable.id, conversation.id));
 
-    // ── 13. Send response ─────────────────────────────────────────────────────
+    // ── 15. Send response to user (always, regardless of confidence) ──────────
     res.json({
       reply,
+      confidence,                          // useful for frontend to optionally show a warning
+      needsHumanReview: confidence < CONFIDENCE_THRESHOLD,
       sessionId: parsed.data.sessionId,
       conversationId: conversation.id,
     });
