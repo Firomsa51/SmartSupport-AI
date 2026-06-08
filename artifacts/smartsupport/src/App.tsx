@@ -23,6 +23,7 @@ import NewChatbot from "@/pages/chatbots/new";
 import ChatbotDetail from "@/pages/chatbots/detail";
 import EmbedPage from "@/pages/chatbots/embed";
 import WidgetPage from "@/pages/widget";
+import ReviewsPage from "@/pages/reviews"; // ← NEW
 
 const clerkPubKey = "pk_test_aGVhbHRoeS1zcG9uZ2UtODcuY2xlcmsuYWNjb3VudHMuZGV2JA";
 const basePath = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -211,6 +212,7 @@ function DashboardRoute() { return <ProtectedRoute component={Dashboard} />; }
 function NewChatbotRoute() { return <ProtectedRoute component={NewChatbot} />; }
 function ChatbotDetailRoute() { return <ProtectedRoute component={ChatbotDetail} />; }
 function EmbedPageRoute() { return <ProtectedRoute component={EmbedPage} />; }
+function ReviewsRoute() { return <ProtectedRoute component={ReviewsPage} />; } // ← NEW
 
 function AppRouter() {
   return (
@@ -223,6 +225,7 @@ function AppRouter() {
       <Route path="/chatbots/:id/embed" component={EmbedPageRoute} />
       <Route path="/chatbots/:id" component={ChatbotDetailRoute} />
       <Route path="/widget/:uid" component={WidgetPage} />
+      <Route path="/reviews" component={ReviewsRoute} /> {/* ← NEW */}
       <Route component={NotFound} />
     </Switch>
   );
