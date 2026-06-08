@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { chatbotsTable } from "./chatbots";
@@ -9,6 +9,8 @@ export const conversationsTable = pgTable("conversations", {
   sessionId: text("session_id").notNull(),
   visitorId: text("visitor_id"),
   messageCount: integer("message_count").notNull().default(0),
+  needs_human_review: boolean("needs_human_review").default(false),        // ← NEW
+  last_unanswered_query: text("last_unanswered_query"),                    // ← NEW
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -18,8 +20,9 @@ export const messagesTable = pgTable("messages", {
   conversationId: integer("conversation_id").notNull().references(() => conversationsTable.id, { onDelete: "cascade" }),
   role: text("role").notNull(), // 'user', 'assistant', 'system'
   content: text("content").notNull(),
-  user_ip: text("user_ip"),                                                          // ← NEW
-  request_timestamp: timestamp("request_timestamp", { withTimezone: true }),         // ← NEW
+  confidence_score: decimal("confidence_score", { precision: 3, scale: 2 }), // ← NEW
+  user_ip: text("user_ip"),
+  request_timestamp: timestamp("request_timestamp", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
