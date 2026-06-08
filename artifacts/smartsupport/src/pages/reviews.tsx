@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { customFetch } from "@workspace/api-client-react";
 import { AlertTriangle, CheckCircle2, Clock, MessageSquare, User, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import AppShell from "@/components/app-shell";
+import { useAuth } from "@clerk/clerk-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type FlaggedConversation = {
@@ -16,20 +16,34 @@ type FlaggedConversation = {
   visitorId: string | null;
   last_unanswered_query: string | null;
   updatedAt: string;
-  latestConfidence: number | null; // 0–100
+  latestConfidence: number | null;
 };
+
+const API_URL = (import.meta.env.VITE_API_URL as string ?? "").replace(/\/+$/, "");
 
 // ─── API Calls ────────────────────────────────────────────────────────────────
 const QUERY_KEY = ["flagged-conversations"];
 
-async function fetchFlaggedConversations(): Promise<FlaggedConversation[]> {
-  return customFetch<FlaggedConversation[]>("/api/admin/reviews");
+async function fetchFlaggedConversations(token: string | null): Promise<FlaggedConversation[]> {
+  const res = await fetch(`${API_URL}/admin/reviews`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch reviews: ${res.status}`);
+  return res.json();
 }
 
-async function resolveConversation(id: number): Promise<void> {
-  return customFetch<void>(`/api/admin/reviews/${id}/resolve`, {
+async function resolveConversation(id: number, token: string | null): Promise<void> {
+  const res = await fetch(`${API_URL}/admin/reviews/${id}/resolve`, {
     method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
+  if (!res.ok) throw new Error(`Failed to resolve: ${res.status}`);
 }
 
 // ─── Confidence Bar ───────────────────────────────────────────────────────────
@@ -88,12 +102,12 @@ function ReviewCardSkeleton() {
 }
 
 // ─── Review Card ──────────────────────────────────────────────────────────────
-function ReviewCard({ conv }: { conv: FlaggedConversation }) {
+function ReviewCard({ conv, token }: { conv: FlaggedConversation; token: string | null }) {
   const [resolving, setResolving] = useState(false);
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () => resolveConversation(conv.id),
+    mutationFn: () => resolveConversation(conv.id, token),
     onMutate: () => setResolving(true),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
@@ -119,7 +133,6 @@ function ReviewCard({ conv }: { conv: FlaggedConversation }) {
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="space-y-1.5">
-          {/* Urgent badge */}
           <Badge
             variant="outline"
             className="gap-1.5 bg-red-500/10 text-red-400 border-red-500/25 uppercase text-[10px] tracking-wider font-bold"
@@ -127,8 +140,6 @@ function ReviewCard({ conv }: { conv: FlaggedConversation }) {
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
             Urgent Review Required
           </Badge>
-
-          {/* Session / Visitor info */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
               <MessageSquare className="w-3 h-3" />
@@ -145,8 +156,6 @@ function ReviewCard({ conv }: { conv: FlaggedConversation }) {
             )}
           </div>
         </div>
-
-        {/* Timestamp */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap pt-1 shrink-0">
           <Clock className="w-3 h-3" />
           {timeAgo(conv.updatedAt)}
@@ -184,11 +193,18 @@ function ReviewCard({ conv }: { conv: FlaggedConversation }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ReviewsPage() {
+  const { getToken } = useAuth();
+
   const { data: flagged, isLoading, error } = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: fetchFlaggedConversations,
-    refetchInterval: 30_000, // auto-refresh every 30s
+    queryFn: async () => {
+      const token = await getToken();
+      return fetchFlaggedConversations(token);
+    },
+    refetchInterval: 30_000,
   });
+
+  const getTokenSync = async () => getToken();
 
   if (error) {
     return (
@@ -224,8 +240,6 @@ export default function ReviewsPage() {
               </p>
             </div>
           </div>
-
-          {/* Count badge */}
           {!isLoading && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded-full">
@@ -259,7 +273,7 @@ export default function ReviewsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {flagged?.map((conv) => (
-              <ReviewCard key={conv.id} conv={conv} />
+              <ReviewCard key={conv.id} conv={conv} token={null} />
             ))}
           </div>
         )}
