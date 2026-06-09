@@ -25,7 +25,7 @@ import EmbedPage from "@/pages/chatbots/embed";
 import WidgetPage from "@/pages/widget";
 import ReviewsPage from "@/pages/reviews"; // ← NEW
 
-const clerkPubKey = "pk_test_aGVhbHRoeS1zcG9uZ2UtODcuY2xlcmsuYWNjb3VudHMuZGV2JA";
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 const basePath = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 function stripBase(path: string): string {
