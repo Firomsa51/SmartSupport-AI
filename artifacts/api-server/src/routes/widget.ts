@@ -15,12 +15,7 @@ const RATE_LIMIT_MAX = 5;
 const CONFIDENCE_THRESHOLD = 0.5;
 
 // ─── Helper: Parse AI reply that may contain a confidence score ──────────────
-// generateAIResponse may return either:
-//   A) Plain text → we default confidence to 1.0
-//   B) JSON string: { "reply": "...", "confidence": 0.72 }
-//   C) Text with trailing tag: "Some answer [confidence:0.83]"
 function parseAIOutput(raw: string): { reply: string; confidence: number } {
-  // Try JSON parse first
   try {
     const trimmed = raw.trim();
     if (trimmed.startsWith("{")) {
@@ -36,7 +31,6 @@ function parseAIOutput(raw: string): { reply: string; confidence: number } {
     // not JSON, fall through
   }
 
-  // Try inline tag: [confidence:0.83] or [confidence: 0.83]
   const tagMatch = raw.match(/\[confidence:\s*([\d.]+)\]/i);
   if (tagMatch) {
     return {
@@ -45,7 +39,6 @@ function parseAIOutput(raw: string): { reply: string; confidence: number } {
     };
   }
 
-  // Plain text — treat as fully confident
   return { reply: raw.trim(), confidence: 1.0 };
 }
 
@@ -135,14 +128,15 @@ router.post("/widget/:chatbotUid/chat", async (req, res): Promise<void> => {
     }));
 
     // ── 8. RAG: get relevant context from knowledge base ─────────────────────
-    const context = await getRelevantContext(bot.id, parsed.data.message);
+    // FIX (Critical Issue #1): arguments were reversed. Signature is
+    // getRelevantContext(query: unknown, chatbotId: number, maxChunks?).
+    // Previously called as (bot.id, parsed.data.message) — swapped.
+    const context = await getRelevantContext(parsed.data.message, bot.id);
 
     // ── 9. Resolve visitor ID ─────────────────────────────────────────────────
     const activeVisitorId = conversation.visitorId ?? parsed.data.visitorId ?? null;
 
     // ── 10. Generate AI response via Groq (Llama-3) ──────────────────────────
-    // We inject a confidence instruction into the system context so Llama-3
-    // appends a [confidence:X.XX] tag at the end of its reply, which we parse.
     const confidenceInstruction = `
 After your reply, on the same line at the very end, append exactly this tag (replace X.XX with your actual score):
 [confidence:X.XX]
@@ -168,7 +162,6 @@ Do NOT explain the score. Just append the tag silently.`;
 
     // ── 12. Human Handover Decision Logic ────────────────────────────────────
     if (confidence < CONFIDENCE_THRESHOLD) {
-      // AI is unsure — flag conversation for human review silently in background
       await db
         .update(conversationsTable)
         .set({
@@ -193,7 +186,6 @@ Do NOT explain the score. Just append the tag silently.`;
         content: parsed.data.message,
         user_ip: userIp,
         request_timestamp: now,
-        // user messages don't have a confidence score
       },
       {
         conversationId: conversation.id,
@@ -201,7 +193,7 @@ Do NOT explain the score. Just append the tag silently.`;
         content: reply,
         user_ip: userIp,
         request_timestamp: now,
-        confidence_score: confidence.toFixed(2), // ← saved as decimal string for pg numeric
+        confidence_score: confidence.toFixed(2),
       },
     ]);
 
@@ -214,7 +206,7 @@ Do NOT explain the score. Just append the tag silently.`;
     // ── 15. Send response to user (always, regardless of confidence) ──────────
     res.json({
       reply,
-      confidence,                          // useful for frontend to optionally show a warning
+      confidence,
       needsHumanReview: confidence < CONFIDENCE_THRESHOLD,
       sessionId: parsed.data.sessionId,
       conversationId: conversation.id,
