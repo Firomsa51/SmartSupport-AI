@@ -177,7 +177,11 @@ Do NOT explain the score. Just append the tag silently.`;
     }
 
     // ── 13. Persist messages WITH confidence_score, user_ip, request_timestamp
-    const now = new Date().toISOString();
+    // FIX (this bug): must be an actual Date object, not a string. Drizzle's
+    // PgTimestamp.mapToDriverValue calls `.toISOString()` on the value itself,
+    // so passing an already-stringified date breaks it (strings have no
+    // .toISOString method) -> "TypeError: value.toISOString is not a function"
+    const now = new Date();
 
     await db.insert(messagesTable).values([
       {
